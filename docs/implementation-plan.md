@@ -10,14 +10,14 @@ A static web app, hosted on GitHub Pages, for browsing and inspecting the AutoTe
 
 ### v1
 - Browse all 295 glaciers on an overview map and in a sortable, filterable table.
-- Organize and filter by **sensor** (Landsat 5/7/8, Sentinel-1/2), **season**, and **retreat rate**.
+- Organize and filter by **sensor** (Landsat 5/7/8, Sentinel-1/2), **season**, and **length-change trend** (called "retreat rate" in early notes).
 - Glacier detail view: terminus traces on a satellite basemap, colored by date or sensor, plus a time series of terminus change.
 - Per-trace inspection: date, sensor, uncertainty, and status.
 - Download individual sets through the viewer: full-resolution traces per glacier (GeoPackage), plus the per-glacier time series (CSV).
 
 ### Later (designed for now, not built in v1)
 - **Images that failed screening.** View rejected traces and their source-image thumbnails, with the reason for rejection. The data isn't available yet. The schema and bucket layout reserve space for it (§4.3, §5.2), so adding it requires no restructuring.
-- Retreat rate over the full 1984–2021 record (§6.4).
+- Length-change trend over the full 1984–2021 record, and advance/retreat labels once the sign convention is confirmed (§6.4).
 - Greenland-wide trace overview (PMTiles) and ice-mask overlays (COG).
 
 ### Non-goals
@@ -52,18 +52,25 @@ Raw archive: `~/Downloads/autoterm_data/` (1.8 GB of zips).
 | `time_series_terminus_variation_new.zip` | 292 CSVs (`GID{n}_all_S1_corrected.csv`): change in area (`10 km2`), change in length (m), decimal date, date. **Covers 2013 to 2020–2021 only.** Also contains PNG plots and KML (not used) | Time series, retreat rate (v1) |
 | `Glacier Identification.csv` | 295 glaciers: lat/lon, official/new/old/foreign names, Moon ID, Bjørk ID, ROI, historical ROI | Glacier index |
 | `uncertainty_all.csv` | Per glacier: MC-dropout uncertainty for L5/L7/L8/S1/S2 + duplicate-trace uncertainty (m) | Glacier index |
-| `reference_polygon_new_ID.zip` | Reference polygon per glacier (used to build training labels) | Full-record retreat rate (later, §6.4) |
+| `reference_polygon_new_ID.zip` | Reference polygon per glacier (used to build training labels) | Full-record length-change trend (later, §6.4) |
 | `Icemask.zip` | GrIMP-based masks 2018–2020, 15 m GeoTIFF | Later (COG overlay) |
 | `label_shape_TermPicks.zip` | TermPicks training labels | Not used |
 
 ### Known data issues (the build must handle these)
-1. `Glacier Identification.csv` is Latin-1/cp1252 encoded (`Bjørk`, `Isbræ`).
+1. `Glacier Identification.csv`: the data rows are UTF-8 (`Isbræ`) but the header has a stray non-UTF-8 byte (`Bj\xbfrkID`). The parser skips the header and reads columns by position.
 2. **ROI strings look corrupted.** Digits seem to have been replaced by spaces (`"[-51.76,71.7 8,-51.52,71.777]"`). Repair rule TBD (§11 Q3). Until it's settled, the ROI is stored as `null` with the raw string kept for reference.
-3. `uncertainty_all.csv` has a BOM and ~700 trailing blank rows.
+3. `uncertainty_all.csv` has a BOM, ~700 trailing blank rows, and 77 `#N/A` cells (sensors with no data for that glacier), which become `null`.
 4. 3 glaciers have no time series, and 1 time series file has only a header. The build must allow a missing time series.
 5. The zips contain `__MACOSX/` junk; skip it.
 6. The time series area unit is labelled `10 km2`, which needs confirming against the manuscript or authors before area is shown in the UI. v1 charts use **length change (m)**, which is unambiguous.
-7. Trace key uniqueness: `(glacier, date, sensor)` is unique for GID1. The build asserts this for every glacier (§6.2).
+7. Trace key uniqueness: `(glacier, date, sensor)` is unique for GID1 but not everywhere. 14 glaciers have same-day Sentinel-1 passes with different geometry; they are kept and the later one gets a `_2` id suffix (§4.1).
+8. **Five files mix traces from two glaciers.** `GID101`, `GID177`, `GID266`, `GID47` and `GID81` hold traces whose per-trace `Glacier ID` names another glacier (`GID102`, `GID178`, `GID262`, `GID48`, `GID29`). The per-trace label is the reliable one (the L8/S1/S2 uncertainties match the labeled glacier in `uncertainty_all.csv`). The build groups traces by label across files and merges exact duplicates (same date, sensor and geometry); each file read and merge is logged. For four of the five, the foreign traces were exact duplicates of the other glacier's own file.
+9. **GID262 is unresolved (question for the dataset authors).** The 621 traces labeled `GID262` inside `GID266.shp` do not merge with `GID262.shp`: 379 share a date and sensor with a trace in `GID262.shp`, with identical uncertainty but different geometry (median separation ~1.8 km). Until the authors answer, both are kept and the second gets a `_2` id suffix.
+10. **`GID65.shp` contains 178 exact in-file duplicates** (Sentinel-1, same date and geometry). They are merged and logged, so for that glacier source count = kept + merged.
+11. The release holds 220,818 traces, not the 278,239 in the manuscript.
+12. **Time series rows are not in date order** (290 of 291 files). The reader sorts them by time.
+13. **Some time series are physically meaningless.** `GID94`, `GID100`, `GID101` and `GID215` reach 68 to 445 km of "length change". `GID81`, `85` and `86` have no series and `GID266` is header-only. `.csv` and `.txt` versions are identical, so only the CSV is read.
+14. **Sign convention is undocumented.** The manuscript does not say whether positive "change in length" means advance or retreat. Evidence is mixed (see §11 item 9), so v1 shows the raw slope with no advance/retreat label or category.
 
 ---
 
@@ -103,7 +110,7 @@ autoterm/
 |---|---|---|---|
 | `latest.json` | `application/json` | — | `public, max-age=60` |
 | `v*/**/*.json`, `*.geojson` | `application/json` / `application/geo+json` | `gzip` (uploaded pre-compressed) | `public, max-age=31536000, immutable` |
-| `v*/**/*.csv` | `text/csv; charset=utf-8` | `gzip` | immutable (as above) |
+| `v*/**/*.csv` | `text/csv; charset=utf-8` | — (small, downloaded as-is) | immutable (as above) |
 | `v*/**/*.gpkg` | `application/geopackage+sqlite3` | — (download as-is) | immutable, plus `Content-Disposition: attachment` |
 | `v*/**/*.webp` | `image/webp` | — | immutable |
 | `*.pmtiles`, `*.tif` (later) | `application/vnd.pmtiles`, `image/tiff` | **never gzip**, because range requests must work | immutable |
@@ -158,12 +165,11 @@ autoterm/
         "by_year_sensor": { "2017": { "S1": 40, "S2": 31 } }   // for the coverage heatmap
       },
       "rejected_count": null,               // null until rejected traces arrive
-      "retreat": {
-        "rate_m_per_yr": -120.0,            // illustrative value; negative = retreat
+      "length_trend": {                     // raw slope as given in the source; no advance/retreat label
+        "slope_m_per_yr": -120.0,           // illustrative value
         "period": ["2013-03-30", "2021-05-28"],
-        "method": "ols_length_change_2013_2021",
-        "n": 941,
-        "category": "moderate_retreat"
+        "method": "ols_length_change",
+        "n": 941
       },
       "files": {
         "traces": "glaciers/GID1/traces.geojson",
@@ -186,8 +192,9 @@ A FeatureCollection of LineStrings, lon/lat rounded to 5 decimals (~1 m), Z drop
   "id": "GID1_20170209_S1",
   "geometry": { "type": "LineString", "coordinates": [[-51.70123, 71.73456], …] },
   "properties": {
+    "trace_id": "GID1_20170209_S1",  // same as the feature id; use as MapLibre promoteId (string feature ids are not usable for feature-state)
     "date": "2017-02-09",
-    "t": 2017.1068,                 // decimal year, used for color scales
+    "t": 2017.1068,                 // decimal year (day/365 or 366), used for color scales; join other data on `date`, not `t`
     "sensor": "S1",
     "season": "DJF",
     "uncertainty_m": 24.67,
@@ -209,8 +216,8 @@ Stored by column rather than as one object per row, which makes it smaller and e
 
 ### 5.4 `GID{n}_traces.gpkg` (download)
 - Layer `traces`: full-resolution geometry (Z kept, original vertices), EPSG:4326.
-- Columns: `trace_id`, `date` (DATE), `glacier_id`, `sensor` (original string, e.g., `Sentinel1`), `uncertainty_m` (REAL), `season`, `status`.
-- Layer `glacier`: a single row of glacier metadata.
+- Columns: `trace_id`, `date` (DATE), `glacier_id`, `sensor` (code, e.g., `S1`), `season`, `uncertainty_m` (REAL), `status`.
+- No separate glacier-metadata layer in v1 (it is in `glaciers.json`).
 - Values are only converted (strings to dates and floats). Geometry is never modified.
 
 ### 5.5 `manifest.json`
@@ -228,50 +235,52 @@ Stored by column rather than as one object per row, which makes it smaller and e
 prep/
   pyproject.toml          deps: pyogrio (read .shp, write .gpkg), shapely>=2, pyproj; dev: pytest
                           (CSV/JSON/gzip/hashing use the standard library)
-  build.py                CLI: build.py --src ~/Downloads/autoterm_data --out dist-data --version v1
+  build.py                CLI + build(): extract the zips to a temp dir, build every glacier, validate, write glaciers.json + manifest
+                          build.py --src ~/Downloads/autoterm_data --out dist-data/v1 --version v1  (--out must be empty or missing)
   autoterm/
-    sources.py            read zips without extracting everything (unzip one glacier at a time to a temp dir)
     glaciers.py           ID + uncertainty CSV parsing, encoding/BOM/blank-row cleanup, ROI handling
-    traces.py             normalize attributes, trace IDs, simplify, write GeoJSON + GPKG
+    traces.py             read shapefiles, group by per-trace label, merge duplicates, normalize, trace IDs, season
+    output.py             simplify + write display GeoJSON, full-resolution GPKG, gzipped JSON
+    pipeline.py           build one glacier's files and its glaciers.json entry
     timeseries.py         parse CSV, write JSON + CSV
-    derive.py             season, retreat rate + category, counts
+    derive.py             length-change trend, counts (season is in traces.py)
     manifest.py           hashing, manifest, per-file header metadata
   upload.sh               rclone sync + header setting, then latest.json switch
-  tests/                  pytest: fixture glacier, schema checks, invariants
+  tests/                  pytest: synthetic fixtures per module, build() on a synthetic archive, one real-archive test
 ```
 
 ### 6.1 Steps
-1. **Index.** Parse `Glacier Identification.csv` (cp1252) and `uncertainty_all.csv` (utf-8-sig, blank rows dropped), joined on glacier number.
-2. **Traces, one glacier at a time** (memory stays bounded; the biggest is ~65 MB `.shp`):
-   - Normalize attributes: strip padding, parse the date, map the sensor name to its code, parse uncertainty to float.
-   - Assign trace IDs and check they're unique.
+1. **Index.** Parse `Glacier Identification.csv` and `uncertainty_all.csv` (utf-8-sig, blank rows dropped, `#N/A` → `null`), joined on glacier number.
+2. **Traces, one glacier at a time** (after the zips are extracted to a temp dir; the biggest file is ~65 MB):
+   - Group by per-trace glacier label (§3 item 8), merge exact duplicates, normalize attributes, assign trace IDs (own file first, so they are stable).
    - Write the full-resolution GPKG.
-   - Simplify (5 m, EPSG:3413) and write `traces.geojson`.
+   - Simplify (5 m, EPSG:3413), check the deviation from the originals, and write `traces.geojson`.
    - Compute counts and bbox.
 3. **Time series.** Parse each CSV and write `timeseries.json` and the download CSV.
 4. **Derived fields** (§6.3, §6.4).
-5. **Gzip** JSON/GeoJSON/CSV in place (the file name stays the same; the upload sets `Content-Encoding`).
+5. **Gzip** JSON/GeoJSON in place (the file name stays the same; the upload sets `Content-Encoding`). CSV and GPKG downloads are not gzipped.
 6. **Manifest** with sizes, hashes and header metadata.
-7. **Validate:** every path in `glaciers.json` exists, JSON matches the schema, trace counts in display = GPKG = source, and the largest display file is under 5 MB (gzipped).
+7. **Validate** (§6.2). `--out` must be empty or missing, and unknown glacier ids fail before anything is extracted.
 
 ### 6.2 Invariants (build fails if violated)
-- 295 glaciers in the index, and each one has a traces file.
+- 295 glaciers when building everything (not checked for a `--glaciers` subset).
+- Display trace count = full-resolution count = counted traces, per glacier. Reconciling with the source row count (kept + merged) is done from the build log.
+- Every display file is under 5 MB gzipped.
 - No duplicate trace IDs once suffixes are applied; every collision is logged.
 - Every sensor value maps to `L5|L7|L8|S1|S2`.
-- Every date parses and falls within 1984–2022.
-- The simplified geometry stays within 5 m of the original (checked with Hausdorff distance on a sample).
+- Every date parses and the glacier's date range falls within 1984–2022.
+- The simplified geometry stays within 6 m of the original (5 m tolerance + ~1 m coordinate rounding; Hausdorff distance on a sample). Measured on GID1 and GID100: worst 5.3 to 5.4 m.
 
 ### 6.3 Season
 Default: **meteorological** seasons, DJF / MAM / JJA / SON (December is counted with the following winter's DJF). Stored per trace and counted per glacier. The scheme name goes in the manifest so a melt/non-melt scheme can be added later without ambiguity (§11 Q2).
 
-### 6.4 Retreat rate
-- **v1:** ordinary least-squares slope of `length_change_m` against decimal year over the provided series (2013 to 2020/21), in m/yr, where negative means retreat. Stored with its period, method name and n, and labelled "2013–2021" in the UI so it isn't read as the long-term rate.
-- **Categories** (default thresholds, adjustable after looking at the distribution):
-  `advancing` > +25 · `stable` ±25 · `slow_retreat` −25 to −100 · `moderate_retreat` −100 to −300 · `fast_retreat` < −300 m/yr. Glaciers without a time series are `unknown`.
-- **Later:** a rate over the full 1984–2021 record, computed from the traces themselves. Use the reference polygon from `reference_polygon_new_ID.zip`: area between each trace and the reference polygon, divided by the mean width. That is the standard box method, and it matches how the provided series was derived (an assumption to confirm). The result goes in as a second `retreat` entry; the v1 entry is not replaced.
+### 6.4 Length-change trend
+- **v1:** ordinary least-squares slope of `length_change_m` against decimal year over the provided series (2013 to 2020/21), in m/yr, exactly as given in the source. Stored with its period, method name and n, and labelled with its period in the UI so it isn't read as the long-term rate.
+- **No advance/retreat label or category in v1.** The sign convention of the source column is unconfirmed (§3 item 14, §11 item 9), so the viewer shows the raw slope and lets users sort and filter by value. Categories can be added once the authors confirm the sign.
+- **Later:** a rate over the full 1984–2021 record, computed from the traces themselves. Use the reference polygon from `reference_polygon_new_ID.zip`: area between each trace and the reference polygon, divided by the mean width. That is the standard box method, and it matches how the provided series was derived (an assumption to confirm). The result goes in as a second entry beside `length_trend`; the v1 entry is not replaced.
 
 ### 6.5 Running it
-Full rebuild is local and expected to take tens of minutes, dominated by reading 3.2 GB of shapefiles. `--glaciers GID1,GID2` rebuilds a subset during development. Output in `dist-data/` is git-ignored.
+Full rebuild is local and takes a few minutes (3.4 GB output; extracting the 3 GB of shapefiles is a large part). `--glaciers GID1,GID2` rebuilds a subset during development. Output in `dist-data/` is git-ignored. The manifest records `git describe --always --dirty`, so build from a clean, committed tree before uploading.
 
 ---
 
@@ -300,7 +309,7 @@ app/
       overview.ts           Greenland map + glacier table
       glacier.ts            detail: trace map, time series, trace inspector, downloads
     components/
-      filters.ts            sensor chips, season chips, retreat-category chips, year range
+      filters.ts            sensor chips, season chips, trend-slope range, year range
       table.ts              sortable glacier table
       traceMap.ts           MapLibre layer setup, data-driven styling, hover/click
       timeseries.ts         Observable Plot chart
@@ -310,15 +319,15 @@ app/
 
 ### 8.2 Views
 **Overview (`#/`)**
-- Map of Greenland with one marker per glacier, colored by retreat category and sized by trace count. Basemap: Esri World Imagery raster tiles (with attribution); fallback: OSM.
-- Table with columns: ID, name, retreat rate, traces, date range, uncertainty. Sortable. The map and table filter together.
-- Filters: retreat category; minimum trace count for the selected sensors/seasons (e.g., "glaciers with ≥50 winter S1 traces"). Everything is computed from `glaciers.json` with no extra fetches.
+- Map of Greenland with one marker per glacier, colored by trend slope (neutral diverging scale, no advance/retreat wording) and sized by trace count. Basemap: Esri World Imagery raster tiles (with attribution); fallback: OSM.
+- Table with columns: ID, name, length-change trend, traces, date range, uncertainty. Sortable. The map and table filter together.
+- Filters: trend-slope range; minimum trace count for the selected sensors/seasons (e.g., "glaciers with ≥50 winter S1 traces"). Everything is computed from `glaciers.json` with no extra fetches.
 
 **Glacier detail (`#/glacier/GID1?sensor=S1,S2&season=DJF`)**
 - Fetches `traces.geojson` and `timeseries.json` for that glacier (2 requests).
 - Map: traces colored by date (sequential color scale) or by sensor (toggle). Filtering by sensor, season and year range uses MapLibre `setFilter`, which needs no reload.
 - Clicking a trace opens the inspector: date, sensor, season, uncertainty, status, and (later) the image thumbnail.
-- Time series: length change against date, points colored by sensor, with the OLS trend line and rate. Points are linked to the map: hover highlights, click selects.
+- Time series: length change against date, with the OLS trend line and slope. The source series has no sensor or trace column, so points are neutral (not colored by sensor) and are linked to the map by date, best effort: hover or click highlights the trace(s) on that date, and a point with no trace on its date (about 2% of rows) highlights nothing.
 - Coverage heatmap of traces per year by sensor (manuscript Fig. 9 style).
 - **Downloads panel:** full-resolution GPKG and time-series CSV, with file sizes from the manifest. These are plain links to R2, so nothing passes through the app.
 
@@ -333,7 +342,7 @@ app/
 
 ### 8.4 Testing
 - **Prep (`pytest`):** unit tests run on tiny synthetic fixtures built inside the test (a few LineStrings and CSV rows), so tests never need the raw archive. A separate integration test runs `build.py --glaciers GID1` against the real archive and is skipped when `/home/oxygen/Downloads/autoterm_data/` is absent.
-- **App (Vitest):** pure logic only, such as filters, URL-state round-trip, season/category labels and data path building. Fixtures are small JSON files matching §5.
+- **App (Vitest):** pure logic only, such as filters, URL-state round-trip, season labels and data path building. Fixtures are small JSON files matching §5.
 - **Visual (`tools/browser/`):** `probe.py console` (no errors, no failed requests) and `shot.py` screenshots of the overview and a glacier detail view, run against `vite preview` with a local `dist-data/` subset. Run before the final merge only (see CLAUDE.md).
 
 ---
@@ -352,25 +361,27 @@ Each milestone is built on its own branch and merged after review. Update the St
 | # | Milestone | Branch | Done when | Status |
 |---|---|---|---|---|
 | M0 | **Bucket spec signed off** (§4–5) | `feature/project-setup` | Plan reviewed; the developer creates the R2 bucket, `r2.dev` URL and CORS policy (not needed until M2) | Spec done; bucket pending |
-| M1 | Prep pipeline on 3 glaciers | `feature/prep-pipeline` | `build.py --glaciers GID1,GID2,GID100` produces valid output; tests pass | **Next** |
-| M2 | Full build + upload | `feature/upload` | All 295 glaciers built, invariants pass, `v1/` uploaded, `manifest.json` checked from the public URL | — |
+| M1 | Prep pipeline on 3 glaciers | `feature/prep-pipeline` | `build.py --glaciers GID1,GID2,GID100` produces valid output; tests pass | **Done** (full 295-glacier build also verified; rebuild from a clean tree for M2) |
+| M2 | Full build + upload | `feature/upload` | All 295 glaciers built, invariants pass, `v1/` uploaded, `manifest.json` checked from the public URL | **Next** (needs the R2 bucket) |
 | M3 | App skeleton + overview | `feature/app-overview` | Deployed to Pages, loads `glaciers.json` from R2, map + table + filters work | — |
 | M4 | Glacier detail | `feature/glacier-detail` | Trace map, sensor/season/year filters, time series, inspector, downloads | — |
 | M5 | Polish | `feature/polish` | URL state, error states, mobile layout, accessibility pass, README (data citation + how to rebuild) | — |
-| Later | Rejected images · full-record retreat rate · Greenland-wide PMTiles · ice-mask COGs · custom domain | — | — | — |
+| Later | Rejected images · full-record length-change trend · Greenland-wide PMTiles · ice-mask COGs · custom domain | — | — | — |
 
 ---
 
 ## 11. Open questions
 Already decided: start on `r2.dev` (custom domain later); host full-resolution downloads (§2). For everything below, build with the stated default until the developer answers.
 
-1. **Retreat-rate period:** is v1's 2013–2021 rate acceptable, with the full-record rate as a later item? (Assumed yes.)
+1. **Trend period:** is v1's 2013–2021 slope acceptable, with the full-record trend as a later item? (Assumed yes.)
 2. **Season scheme:** meteorological (assumed), or melt/non-melt? Can both be offered?
 3. **ROI repair:** is there a clean copy of `Glacier Identification.csv`? If not, is "space → `0`" the right repair? (Assumed: ROI is `null` until confirmed; it isn't needed for v1 features.)
 4. **Area unit:** the time series column is labelled `10 km2`. Is that km² × 10, or a typo for `km2`? (v1 avoids it and plots length.)
 5. **Official archive:** is AutoTerm published elsewhere (e.g., Zenodo)? The viewer should cite and link it alongside our downloads.
 6. **Version retention:** keep every version, or only the latest two?
 7. **Rejected-image source:** when available, what form will it take (rejected traces as shapefiles plus source images from GEE)? This decides whether the thumbnail step belongs in this pipeline.
+8. **GID262 (for the dataset authors):** why do `GID262.shp` and the GID262-labeled traces in `GID266.shp` share 379 (date, sensor) pairs with different geometry? Are they distinct picks or one is wrong? (Default: keep both.) See §3 item 9.
+9. **Time series sign and quality (for the dataset authors):** is positive `Change in length (m)` advance or retreat? With negative = retreat, 120 of 291 glaciers come out "advancing" (>25 m/yr) and 52 retreating, which looks high for Greenland; flipping the sign gives the opposite. Zachariæ Isstrøm (GID102) shows +1.8 km by 2015, though that glacier retreated. Also: should the four series with absurd values (GID94, 100, 101, 215) be excluded? And is a robust slope (Theil–Sen) preferred over least squares? A robust slope would change the advance/retreat class of 17 of 291 glaciers if classes were used. (Default: least squares, raw slope, no label.)
 
 ## 12. Risks
 | Risk | Mitigation |
@@ -378,4 +389,4 @@ Already decided: start on `r2.dev` (custom domain later); host full-resolution d
 | `r2.dev` rate limits during heavier use | Move to a custom domain (config-only change) |
 | Large glaciers make the detail view slow on mobile | Measure in M4; if needed, raise the tolerance or split traces per decade (layout allows extra files) |
 | Source attribute inconsistencies in some of the 295 files | Invariants in §6.2 fail loudly; fixture tests for each problem found |
-| Misread retreat rate (2013–2021 shown as long-term) | Period shown next to every rate; method stored in data |
+| Misread trend (2013–2021 shown as long-term, or sign read backwards) | Period shown next to every slope, no advance/retreat wording until the sign is confirmed; method stored in data |
