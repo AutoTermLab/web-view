@@ -1,6 +1,6 @@
 # AutoTerm Web Viewer — Implementation Plan
 
-Status: draft for review · 2026-10-22
+Status: accepted for development · 2026-10-22. Where §11 is still open, build with the stated defaults.
 
 A static web app, hosted on GitHub Pages, for browsing and inspecting the AutoTerm Greenland glacier terminus dataset (Zhang et al., 2023, *The Cryosphere* 17, 3485–3503). The data lives in a Cloudflare R2 bucket and is fetched piece by piece. The app never downloads the full archive.
 
@@ -37,6 +37,8 @@ A static web app, hosted on GitHub Pages, for browsing and inspecting the AutoTe
 | Storage budget | Under 10 GB total (R2 free tier) |
 | Frontend | Vite + TypeScript (no UI framework), MapLibre GL JS, Observable Plot |
 | Data prep | Python, run locally with `uv`; the raw archive never enters the repo or the bucket |
+| Tests | `pytest` (prep), Vitest (app logic), `tools/browser/` (visual and console checks, run only before the final merge) — see §8.4 |
+| Repo / Pages | `github.com/AutoTermLab/web-view` → `https://autotermlab.github.io/web-view/` |
 
 ---
 
@@ -111,7 +113,7 @@ autoterm/
 ```json
 [
   {
-    "AllowedOrigins": ["https://<github-user>.github.io", "http://localhost:5173"],
+    "AllowedOrigins": ["https://autotermlab.github.io", "http://localhost:5173"],
     "AllowedMethods": ["GET", "HEAD"],
     "AllowedHeaders": ["Range"],
     "ExposeHeaders": ["Content-Length", "Content-Range", "ETag"],
@@ -224,7 +226,8 @@ Stored by column rather than as one object per row, which makes it smaller and e
 
 ```
 prep/
-  pyproject.toml          deps: pyogrio/geopandas, shapely>=2, pyproj, pandas, numpy
+  pyproject.toml          deps: pyogrio (read .shp, write .gpkg), shapely>=2, pyproj; dev: pytest
+                          (CSV/JSON/gzip/hashing use the standard library)
   build.py                CLI: build.py --src ~/Downloads/autoterm_data --out dist-data --version v1
   autoterm/
     sources.py            read zips without extracting everything (unzip one glacier at a time to a temp dir)
@@ -328,6 +331,11 @@ app/
 - Accessibility: keyboard-navigable table and filters; color scales checked for color-vision deficiency. Sensor colors stay the same across map, chart and heatmap.
 - Works at phone width (map above, panels stacked below).
 
+### 8.4 Testing
+- **Prep (`pytest`):** unit tests run on tiny synthetic fixtures built inside the test (a few LineStrings and CSV rows), so tests never need the raw archive. A separate integration test runs `build.py --glaciers GID1` against the real archive and is skipped when `/home/oxygen/Downloads/autoterm_data/` is absent.
+- **App (Vitest):** pure logic only, such as filters, URL-state round-trip, season/category labels and data path building. Fixtures are small JSON files matching §5.
+- **Visual (`tools/browser/`):** `probe.py console` (no errors, no failed requests) and `shot.py` screenshots of the overview and a glacier detail view, run against `vite preview` with a local `dist-data/` subset. Run before the final merge only (see CLAUDE.md).
+
 ---
 
 ## 9. Deployment
@@ -339,19 +347,23 @@ app/
 
 ## 10. Milestones
 
-| # | Milestone | Done when |
-|---|---|---|
-| M0 | **Bucket spec signed off** (§4–5) | You've reviewed this document; the R2 bucket and `r2.dev` URL exist with CORS set |
-| M1 | Prep pipeline on 3 glaciers | `build.py --glaciers GID1,GID2,GID100` produces valid output; tests pass |
-| M2 | Full build + upload | All 295 glaciers built, invariants pass, `v1/` uploaded, `manifest.json` checked from the public URL |
-| M3 | App skeleton + overview | Deployed to Pages, loads `glaciers.json` from R2, map + table + filters work |
-| M4 | Glacier detail | Trace map, sensor/season/year filters, time series, inspector, downloads |
-| M5 | Polish | URL state, error states, mobile layout, accessibility pass, README (data citation + how to rebuild) |
-| Later | Rejected images · full-record retreat rate · Greenland-wide PMTiles · ice-mask COGs · custom domain | — |
+Each milestone is built on its own branch and merged after review. Update the Status column when a milestone is merged.
+
+| # | Milestone | Branch | Done when | Status |
+|---|---|---|---|---|
+| M0 | **Bucket spec signed off** (§4–5) | `feature/project-setup` | Plan reviewed; the developer creates the R2 bucket, `r2.dev` URL and CORS policy (not needed until M2) | Spec done; bucket pending |
+| M1 | Prep pipeline on 3 glaciers | `feature/prep-pipeline` | `build.py --glaciers GID1,GID2,GID100` produces valid output; tests pass | **Next** |
+| M2 | Full build + upload | `feature/upload` | All 295 glaciers built, invariants pass, `v1/` uploaded, `manifest.json` checked from the public URL | — |
+| M3 | App skeleton + overview | `feature/app-overview` | Deployed to Pages, loads `glaciers.json` from R2, map + table + filters work | — |
+| M4 | Glacier detail | `feature/glacier-detail` | Trace map, sensor/season/year filters, time series, inspector, downloads | — |
+| M5 | Polish | `feature/polish` | URL state, error states, mobile layout, accessibility pass, README (data citation + how to rebuild) | — |
+| Later | Rejected images · full-record retreat rate · Greenland-wide PMTiles · ice-mask COGs · custom domain | — | — | — |
 
 ---
 
 ## 11. Open questions
+Already decided: start on `r2.dev` (custom domain later); host full-resolution downloads (§2). For everything below, build with the stated default until the developer answers.
+
 1. **Retreat-rate period:** is v1's 2013–2021 rate acceptable, with the full-record rate as a later item? (Assumed yes.)
 2. **Season scheme:** meteorological (assumed), or melt/non-melt? Can both be offered?
 3. **ROI repair:** is there a clean copy of `Glacier Identification.csv`? If not, is "space → `0`" the right repair? (Assumed: ROI is `null` until confirmed; it isn't needed for v1 features.)
