@@ -63,7 +63,11 @@ Raw archive: `~/Downloads/autoterm_data/` (1.8 GB of zips).
 4. 3 glaciers have no time series, and 1 time series file has only a header. The build must allow a missing time series.
 5. The zips contain `__MACOSX/` junk; skip it.
 6. The time series area unit is labelled `10 km2`, which needs confirming against the manuscript or authors before area is shown in the UI. v1 charts use **length change (m)**, which is unambiguous.
-7. Trace key uniqueness: `(glacier, date, sensor)` is unique for GID1. The build asserts this for every glacier (§6.2).
+7. Trace key uniqueness: `(glacier, date, sensor)` is unique for GID1 but not everywhere. 14 glaciers have same-day Sentinel-1 passes with different geometry; they are kept and the later one gets a `_2` id suffix (§4.1).
+8. **Five files mix traces from two glaciers.** `GID101`, `GID177`, `GID266`, `GID47` and `GID81` hold traces whose per-trace `Glacier ID` names another glacier (`GID102`, `GID178`, `GID262`, `GID48`, `GID29`). The per-trace label is the reliable one (the L8/S1/S2 uncertainties match the labeled glacier in `uncertainty_all.csv`). The build groups traces by label across files and merges exact duplicates (same date, sensor and geometry); each file read and merge is logged. For four of the five, the foreign traces were exact duplicates of the other glacier's own file.
+9. **GID262 is unresolved (question for the dataset authors).** The 621 traces labeled `GID262` inside `GID266.shp` do not merge with `GID262.shp`: 379 share a date and sensor with a trace in `GID262.shp`, with identical uncertainty but different geometry (median separation ~1.8 km). Until the authors answer, both are kept and the second gets a `_2` id suffix.
+10. **`GID65.shp` contains 178 exact in-file duplicates** (Sentinel-1, same date and geometry). They are merged and logged, so for that glacier source count = kept + merged.
+11. The release holds 220,818 traces, not the 278,239 in the manuscript.
 
 ---
 
@@ -371,6 +375,7 @@ Already decided: start on `r2.dev` (custom domain later); host full-resolution d
 5. **Official archive:** is AutoTerm published elsewhere (e.g., Zenodo)? The viewer should cite and link it alongside our downloads.
 6. **Version retention:** keep every version, or only the latest two?
 7. **Rejected-image source:** when available, what form will it take (rejected traces as shapefiles plus source images from GEE)? This decides whether the thumbnail step belongs in this pipeline.
+8. **GID262 (for the dataset authors):** why do `GID262.shp` and the GID262-labeled traces in `GID266.shp` share 379 (date, sensor) pairs with different geometry? Are they distinct picks or one is wrong? (Default: keep both.) See §3 item 9.
 
 ## 12. Risks
 | Risk | Mitigation |
