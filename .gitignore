@@ -1,0 +1,13 @@
+references/
+
+# data build output (published to R2, never committed)
+dist-data/
+
+# local proxy CA for the browser tool (environment-specific)
+tools/browser/certs/*.crt
+
+__pycache__/
+node_modules/
+dist/
+.venv/
+shots/
