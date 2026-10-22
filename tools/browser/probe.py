@@ -137,6 +137,7 @@ def fetch(url: str, max_chars: int, timeout: float) -> dict:
     host = urlparse(url).hostname or ""
     direct = "." not in host or host == "localhost"
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({} if direct else None))
+    opener.addheaders = [("User-Agent", "Mozilla/5.0 (probe.py)")]  # Cloudflare rejects urllib's default with error 1010
     start = time.time()
     try:
         with opener.open(url, timeout=timeout) as r:

@@ -13,9 +13,10 @@ Static web app (GitHub Pages) for viewing and inspecting AutoTerm Greenland glac
 | Implementation plan, bucket layout, file schemas | `docs/implementation-plan.md` |
 | Data prep pipeline | `prep/` (planned) |
 | Built data, ready for upload | `dist-data/` (git-ignored) |
+| Upload script (rclone → R2) | `prep/upload.sh` (run by the developer, not in the sandbox: R2 is firewalled and the credentials stay on their machine) |
 | Web app | `app/` (planned) |
 | Browser tool for visual checks | `tools/browser/` |
-| Published data | R2 bucket via `r2.dev` (not created yet, URL TBD; set as `VITE_DATA_BASE_URL`) |
+| Published data | `https://pub-f0be383784914488861cad529a904412.r2.dev/autoterm` (R2 via `r2.dev`; `v1` is live). Set as `VITE_DATA_BASE_URL`; the app fetches `<base>/latest.json`, then `<base>/<version>/glaciers.json`. A custom domain is planned later |
 | GitHub repo / Pages | `AutoTermLab/web-view` → `https://autotermlab.github.io/web-view/` |
 
 ## Rules
@@ -69,7 +70,7 @@ docker run --rm --network host -v "$PWD/shots:/out" web-view-browser \
 docker run --rm --network host web-view-browser probe.py console http://localhost:5173/
 
 # check data URLs (status, content type, parsed JSON)
-docker run --rm web-view-browser probe.py http https://<bucket>.r2.dev/latest.json
+docker run --rm web-view-browser probe.py http https://pub-f0be383784914488861cad529a904412.r2.dev/autoterm/latest.json
 ```
 
 - Screenshots go to `shots/` (git-ignored).

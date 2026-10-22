@@ -31,7 +31,7 @@ A static web app, hosted on GitHub Pages, for browsing and inspecting the AutoTe
 | Topic | Decision |
 |---|---|
 | Hosting (app) | GitHub Pages, deployed by GitHub Actions |
-| Hosting (data) | Cloudflare R2. Starts on `r2.dev`; a custom domain may come later. Only `DATA_BASE_URL` changes when it does |
+| Hosting (data) | Cloudflare R2. Live on `https://pub-f0be383784914488861cad529a904412.r2.dev/autoterm`; a custom domain (the developer has one on Cloudflare) comes later. Only `DATA_BASE_URL` changes when it does. `v1` was uploaded 2026-10-22 and verified (§7) |
 | Data organization | Small files per glacier at predictable paths, under an immutable versioned prefix (§4) |
 | Resolution | **Both.** Simplified traces for display, plus full-resolution GeoPackage per glacier for download. Revisit only if performance becomes a problem |
 | Storage budget | Under 10 GB total (R2 free tier) |
@@ -285,10 +285,29 @@ Full rebuild is local and takes a few minutes (3.4 GB output; extracting the 3 G
 ---
 
 ## 7. Upload (`prep/upload.sh`)
-- Uses `rclone` with an R2 remote (S3-compatible; the credentials stay on your machine and never go in the repo).
-- Uploads by file type so each group gets the headers from §4.2 (`--header-upload "Content-Encoding: gzip"` etc.).
-- Order: upload `v{N}/` → read back and check `manifest.json` → **then** overwrite `latest.json`. A partial upload is never live.
-- `--dry-run` flag; refuses to overwrite an existing `v{N}/` unless `--force`.
+```bash
+prep/upload.sh --remote r2:BUCKET --version v1 [--src dist-data] [--dry-run] [--force]
+```
+- Uses `rclone` with an R2 remote (S3-compatible). The credentials live in your rclone config or environment and never go in the repo or the script. The remote needs `no_check_bucket = true` (or the script's `--s3-no-check-bucket`) when the token is scoped to one bucket.
+- **Credentials:** the Access Key ID (32 hex characters) and Secret Access Key (64) from an R2 API token with Object Read & Write on this bucket; the endpoint is `https://<account-id>.r2.cloudflarestorage.com`. A bucket-scoped token is denied `rclone lsd`; test with `rclone lsf r2:BUCKET` instead.
+- Uploads to `autoterm/<version>/` in four passes, one per file type, each with the §4.2 headers: `*.geojson` and `*.json` (gzip), `*.csv`, `*.gpkg` (`Content-Disposition: attachment`). All use `Cache-Control: immutable` and rclone's `--immutable`.
+- Order: upload the version → `rclone check` against the local build (hashes) → **then** write `autoterm/latest.json` (`max-age=60`). A failed check leaves `latest.json` alone, so a partial upload is never live.
+- Refuses to upload when `autoterm/<version>/` already has objects, unless `--force`. `--dry-run` shows the copies and skips the check and `latest.json`.
+- Tested with a stub `rclone` (header groups, refusal, ordering, failed check, dry run). The real bucket is verified by hand after the first upload (below).
+
+### After the first upload (manual)
+With the bucket's `r2.dev` URL enabled and the §4.3 CORS policy applied (done for `v1`, all checks passed; results below):
+```bash
+curl -sI https://<bucket>.r2.dev/autoterm/v1/glaciers/GID1/traces.geojson   # content-type, content-encoding: gzip, cache-control
+curl -s  https://<bucket>.r2.dev/autoterm/latest.json
+docker run --rm web-view-browser probe.py http https://<bucket>.r2.dev/autoterm/v1/glaciers.json   # parses as JSON
+curl -sI -H "Origin: https://autotermlab.github.io" https://<bucket>.r2.dev/autoterm/latest.json | grep -i access-control
+```
+Findings from the `v1` upload:
+- All 1,173 files in `manifest.json` match the bucket (size, content type, encoding, cache header). Check with HEAD requests sent **sequentially**: `r2.dev` returned HTTP 429 for 563 of 1,173 requests sent 16 at a time. A TLS handshake timeout can also occur; retry.
+- Pre-gzipped objects are served unchanged to clients that send `Accept-Encoding: gzip` (browsers do), with `Content-Encoding: gzip`; other clients get them decompressed.
+- Cloudflare rejects Python's default `urllib` User-Agent (error 1010) on `r2.dev`. `probe.py` now sends a browser-like User-Agent; browsers and `curl` are unaffected.
+- CORS: allowed origins get `Access-Control-Allow-Origin` and the exposed headers; `Range` preflight returns 204; other origins get no CORS headers.
 
 ---
 
@@ -301,7 +320,7 @@ app/
   vite.config.ts            base: '/web-view/' for GitHub Pages
   src/
     main.ts                 bootstrap: fetch latest.json → glaciers.json, init router
-    config.ts               DATA_BASE_URL (env: VITE_DATA_BASE_URL), defaults to r2.dev URL
+    config.ts               DATA_BASE_URL (env: VITE_DATA_BASE_URL), defaults to https://pub-f0be383784914488861cad529a904412.r2.dev/autoterm
     data.ts                 typed fetchers + in-memory cache; one place that knows the bucket layout
     types.ts                TS types mirroring §5 schemas
     state.ts                filter state ↔ URL query string (shareable links)
@@ -360,10 +379,10 @@ Each milestone is built on its own branch and merged after review. Update the St
 
 | # | Milestone | Branch | Done when | Status |
 |---|---|---|---|---|
-| M0 | **Bucket spec signed off** (§4–5) | `feature/project-setup` | Plan reviewed; the developer creates the R2 bucket, `r2.dev` URL and CORS policy (not needed until M2) | Spec done; bucket pending |
+| M0 | **Bucket spec signed off** (§4–5) | `feature/project-setup` | Plan reviewed; the developer creates the R2 bucket, `r2.dev` URL and CORS policy (not needed until M2) | **Done** (bucket, `r2.dev` URL and CORS in place) |
 | M1 | Prep pipeline on 3 glaciers | `feature/prep-pipeline` | `build.py --glaciers GID1,GID2,GID100` produces valid output; tests pass | **Done** (full 295-glacier build also verified; rebuild from a clean tree for M2) |
-| M2 | Full build + upload | `feature/upload` | All 295 glaciers built, invariants pass, `v1/` uploaded, `manifest.json` checked from the public URL | **Next** (needs the R2 bucket) |
-| M3 | App skeleton + overview | `feature/app-overview` | Deployed to Pages, loads `glaciers.json` from R2, map + table + filters work | — |
+| M2 | Full build + upload | `feature/upload` | All 295 glaciers built, invariants pass, `v1/` uploaded, `manifest.json` checked from the public URL | **Done** (`v1` uploaded 2026-10-22 from commit `958c5dc`; all 1,173 files verified against the manifest, §7) |
+| M3 | App skeleton + overview | `feature/app-overview` | Deployed to Pages, loads `glaciers.json` from R2, map + table + filters work | **Next** |
 | M4 | Glacier detail | `feature/glacier-detail` | Trace map, sensor/season/year filters, time series, inspector, downloads | — |
 | M5 | Polish | `feature/polish` | URL state, error states, mobile layout, accessibility pass, README (data citation + how to rebuild) | — |
 | Later | Rejected images · full-record length-change trend · Greenland-wide PMTiles · ice-mask COGs · custom domain | — | — | — |
@@ -386,7 +405,8 @@ Already decided: start on `r2.dev` (custom domain later); host full-resolution d
 ## 12. Risks
 | Risk | Mitigation |
 |---|---|
-| `r2.dev` rate limits during heavier use | Move to a custom domain (config-only change) |
+| `r2.dev` rate limits during heavier use (observed: HTTP 429 when 16 parallel requests were sent) | Move to a custom domain (config-only change) before sharing the viewer publicly; cache JSON/GeoJSON/GPKG with a Cache Rule there (not in Cloudflare's default cached extensions; verify `cf-cache-status`) |
 | Large glaciers make the detail view slow on mobile | Measure in M4; if needed, raise the tolerance or split traces per decade (layout allows extra files) |
 | Source attribute inconsistencies in some of the 295 files | Invariants in §6.2 fail loudly; fixture tests for each problem found |
+| ~~`r2.dev` may not pass pre-gzipped objects through unchanged~~ | Verified OK on `v1` (§7): served with `Content-Encoding: gzip` to clients that accept it |
 | Misread trend (2013–2021 shown as long-term, or sign read backwards) | Period shown next to every slope, no advance/retreat wording until the sign is confirmed; method stored in data |
