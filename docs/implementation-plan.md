@@ -213,8 +213,8 @@ Stored by column rather than as one object per row, which makes it smaller and e
 
 ### 5.4 `GID{n}_traces.gpkg` (download)
 - Layer `traces`: full-resolution geometry (Z kept, original vertices), EPSG:4326.
-- Columns: `trace_id`, `date` (DATE), `glacier_id`, `sensor` (original string, e.g., `Sentinel1`), `uncertainty_m` (REAL), `season`, `status`.
-- Layer `glacier`: a single row of glacier metadata.
+- Columns: `trace_id`, `date` (DATE), `glacier_id`, `sensor` (code, e.g., `S1`), `season`, `uncertainty_m` (REAL), `status`.
+- No separate glacier-metadata layer in v1 (it is in `glaciers.json`).
 - Values are only converted (strings to dates and floats). Geometry is never modified.
 
 ### 5.5 `manifest.json`
@@ -263,7 +263,7 @@ prep/
 - No duplicate trace IDs once suffixes are applied; every collision is logged.
 - Every sensor value maps to `L5|L7|L8|S1|S2`.
 - Every date parses and falls within 1984–2022.
-- The simplified geometry stays within 5 m of the original (checked with Hausdorff distance on a sample).
+- The simplified geometry stays within 6 m of the original (5 m tolerance + ~1 m coordinate rounding; Hausdorff distance on a sample). Measured on GID1 and GID100: worst 5.3 to 5.4 m.
 
 ### 6.3 Season
 Default: **meteorological** seasons, DJF / MAM / JJA / SON (December is counted with the following winter's DJF). Stored per trace and counted per glacier. The scheme name goes in the manifest so a melt/non-melt scheme can be added later without ambiguity (§11 Q2).
