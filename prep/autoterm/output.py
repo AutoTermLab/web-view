@@ -11,6 +11,7 @@ import shapely
 from pyproj import Transformer
 
 TOLERANCE_M = 5
+MAX_DEVIATION_M = 6  # tolerance + ~1 m coordinate rounding
 TO_METRES = Transformer.from_crs(4326, 3413, always_xy=True).transform
 TO_DEGREES = Transformer.from_crs(3413, 4326, always_xy=True).transform
 
@@ -36,11 +37,23 @@ def display_geojson(traces):
             "id": t["id"],
             "geometry": {"type": "LineString", "coordinates": coordinates},
             "properties": {
-                "date": t["date"], "t": _decimal_year(t["date"]), "sensor": t["sensor"], "season": t["season"],
+                "trace_id": t["id"], "date": t["date"], "t": _decimal_year(t["date"]), "sensor": t["sensor"], "season": t["season"],
                 "uncertainty_m": t["uncertainty_m"], "status": "passed", "reject_reason": None, "image": None,
             },
         })
     return {"type": "FeatureCollection", "features": features}
+
+
+def max_deviation_m(traces, collection, every=50):
+    """Largest Hausdorff distance, in metres, between a sample of traces and their display versions."""
+    sample = list(zip(traces, collection["features"]))[::every]
+    return max(
+        shapely.hausdorff_distance(
+            _map(shapely.force_2d(t["geometry"]), TO_METRES),
+            _map(shapely.LineString(f["geometry"]["coordinates"]), TO_METRES),
+        )
+        for t, f in sample
+    )
 
 
 def write_json(path, obj):

@@ -7,7 +7,7 @@ import shapely
 from pyproj import Transformer
 from shapely.geometry import LineString
 
-from autoterm.output import display_geojson, write_gpkg, write_json
+from autoterm.output import display_geojson, max_deviation_m, write_gpkg, write_json
 
 TO_METRES = Transformer.from_crs(4326, 3413, always_xy=True).transform
 
@@ -37,7 +37,7 @@ def test_display_properties_follow_the_schema():
     feature = display_geojson([wiggly_trace()])["features"][0]
     assert feature["type"] == "Feature" and feature["id"] == "GID1_20170209_S1"
     assert feature["properties"] == {
-        "date": "2017-02-09", "t": 2017.1068, "sensor": "S1", "season": "DJF", "uncertainty_m": 24.6,
+        "trace_id": "GID1_20170209_S1", "date": "2017-02-09", "t": 2017.1068, "sensor": "S1", "season": "DJF", "uncertainty_m": 24.6,
         "status": "passed", "reject_reason": None, "image": None,
     }
 
@@ -58,3 +58,12 @@ def test_json_is_written_gzipped(tmp_path):
     path = tmp_path / "x.json"
     write_json(path, {"a": [1, None]})
     assert json.loads(gzip.decompress(path.read_bytes())) == {"a": [1, None]}
+
+
+def test_deviation_is_small_for_a_faithful_simplification_and_large_otherwise():
+    trace = wiggly_trace()
+    collection = display_geojson([trace])
+    assert max_deviation_m([trace], collection) < 6
+    shifted = display_geojson([trace])
+    shifted["features"][0]["geometry"]["coordinates"] = [[x + 0.01, y] for x, y in shifted["features"][0]["geometry"]["coordinates"]]
+    assert max_deviation_m([trace], shifted) > 100

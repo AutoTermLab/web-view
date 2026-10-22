@@ -192,8 +192,9 @@ A FeatureCollection of LineStrings, lon/lat rounded to 5 decimals (~1 m), Z drop
   "id": "GID1_20170209_S1",
   "geometry": { "type": "LineString", "coordinates": [[-51.70123, 71.73456], …] },
   "properties": {
+    "trace_id": "GID1_20170209_S1",  // same as the feature id; use as MapLibre promoteId (string feature ids are not usable for feature-state)
     "date": "2017-02-09",
-    "t": 2017.1068,                 // decimal year, used for color scales
+    "t": 2017.1068,                 // decimal year (day/365 or 366), used for color scales; join other data on `date`, not `t`
     "sensor": "S1",
     "season": "DJF",
     "uncertainty_m": 24.67,
@@ -234,37 +235,40 @@ Stored by column rather than as one object per row, which makes it smaller and e
 prep/
   pyproject.toml          deps: pyogrio (read .shp, write .gpkg), shapely>=2, pyproj; dev: pytest
                           (CSV/JSON/gzip/hashing use the standard library)
-  build.py                CLI: build.py --src ~/Downloads/autoterm_data --out dist-data --version v1
+  build.py                CLI + build(): extract the zips to a temp dir, build every glacier, validate, write glaciers.json + manifest
+                          build.py --src ~/Downloads/autoterm_data --out dist-data/v1 --version v1  (--out must be empty or missing)
   autoterm/
-    sources.py            read zips without extracting everything (unzip one glacier at a time to a temp dir)
     glaciers.py           ID + uncertainty CSV parsing, encoding/BOM/blank-row cleanup, ROI handling
-    traces.py             normalize attributes, trace IDs, simplify, write GeoJSON + GPKG
+    traces.py             read shapefiles, group by per-trace label, merge duplicates, normalize, trace IDs, season
+    output.py             simplify + write display GeoJSON, full-resolution GPKG, gzipped JSON
+    pipeline.py           build one glacier's files and its glaciers.json entry
     timeseries.py         parse CSV, write JSON + CSV
     derive.py             length-change trend, counts (season is in traces.py)
     manifest.py           hashing, manifest, per-file header metadata
   upload.sh               rclone sync + header setting, then latest.json switch
-  tests/                  pytest: fixture glacier, schema checks, invariants
+  tests/                  pytest: synthetic fixtures per module, build() on a synthetic archive, one real-archive test
 ```
 
 ### 6.1 Steps
 1. **Index.** Parse `Glacier Identification.csv` and `uncertainty_all.csv` (utf-8-sig, blank rows dropped, `#N/A` → `null`), joined on glacier number.
-2. **Traces, one glacier at a time** (memory stays bounded; the biggest is ~65 MB `.shp`):
-   - Normalize attributes: strip padding, parse the date, map the sensor name to its code, parse uncertainty to float.
-   - Assign trace IDs and check they're unique.
+2. **Traces, one glacier at a time** (after the zips are extracted to a temp dir; the biggest file is ~65 MB):
+   - Group by per-trace glacier label (§3 item 8), merge exact duplicates, normalize attributes, assign trace IDs (own file first, so they are stable).
    - Write the full-resolution GPKG.
-   - Simplify (5 m, EPSG:3413) and write `traces.geojson`.
+   - Simplify (5 m, EPSG:3413), check the deviation from the originals, and write `traces.geojson`.
    - Compute counts and bbox.
 3. **Time series.** Parse each CSV and write `timeseries.json` and the download CSV.
 4. **Derived fields** (§6.3, §6.4).
-5. **Gzip** JSON/GeoJSON/CSV in place (the file name stays the same; the upload sets `Content-Encoding`).
+5. **Gzip** JSON/GeoJSON in place (the file name stays the same; the upload sets `Content-Encoding`). CSV and GPKG downloads are not gzipped.
 6. **Manifest** with sizes, hashes and header metadata.
-7. **Validate:** every path in `glaciers.json` exists, JSON matches the schema, trace counts in display = GPKG = source, and the largest display file is under 5 MB (gzipped).
+7. **Validate** (§6.2). `--out` must be empty or missing, and unknown glacier ids fail before anything is extracted.
 
 ### 6.2 Invariants (build fails if violated)
-- 295 glaciers in the index, and each one has a traces file.
+- 295 glaciers when building everything (not checked for a `--glaciers` subset).
+- Display trace count = full-resolution count = counted traces, per glacier. Reconciling with the source row count (kept + merged) is done from the build log.
+- Every display file is under 5 MB gzipped.
 - No duplicate trace IDs once suffixes are applied; every collision is logged.
 - Every sensor value maps to `L5|L7|L8|S1|S2`.
-- Every date parses and falls within 1984–2022.
+- Every date parses and the glacier's date range falls within 1984–2022.
 - The simplified geometry stays within 6 m of the original (5 m tolerance + ~1 m coordinate rounding; Hausdorff distance on a sample). Measured on GID1 and GID100: worst 5.3 to 5.4 m.
 
 ### 6.3 Season
@@ -273,10 +277,10 @@ Default: **meteorological** seasons, DJF / MAM / JJA / SON (December is counted 
 ### 6.4 Length-change trend
 - **v1:** ordinary least-squares slope of `length_change_m` against decimal year over the provided series (2013 to 2020/21), in m/yr, exactly as given in the source. Stored with its period, method name and n, and labelled with its period in the UI so it isn't read as the long-term rate.
 - **No advance/retreat label or category in v1.** The sign convention of the source column is unconfirmed (§3 item 14, §11 item 9), so the viewer shows the raw slope and lets users sort and filter by value. Categories can be added once the authors confirm the sign.
-- **Later:** a rate over the full 1984–2021 record, computed from the traces themselves. Use the reference polygon from `reference_polygon_new_ID.zip`: area between each trace and the reference polygon, divided by the mean width. That is the standard box method, and it matches how the provided series was derived (an assumption to confirm). The result goes in as a second `retreat` entry; the v1 entry is not replaced.
+- **Later:** a rate over the full 1984–2021 record, computed from the traces themselves. Use the reference polygon from `reference_polygon_new_ID.zip`: area between each trace and the reference polygon, divided by the mean width. That is the standard box method, and it matches how the provided series was derived (an assumption to confirm). The result goes in as a second entry beside `length_trend`; the v1 entry is not replaced.
 
 ### 6.5 Running it
-Full rebuild is local and expected to take tens of minutes, dominated by reading 3.2 GB of shapefiles. `--glaciers GID1,GID2` rebuilds a subset during development. Output in `dist-data/` is git-ignored.
+Full rebuild is local and takes a few minutes (3.4 GB output; extracting the 3 GB of shapefiles is a large part). `--glaciers GID1,GID2` rebuilds a subset during development. Output in `dist-data/` is git-ignored. The manifest records `git describe --always --dirty`, so build from a clean, committed tree before uploading.
 
 ---
 
@@ -323,7 +327,7 @@ app/
 - Fetches `traces.geojson` and `timeseries.json` for that glacier (2 requests).
 - Map: traces colored by date (sequential color scale) or by sensor (toggle). Filtering by sensor, season and year range uses MapLibre `setFilter`, which needs no reload.
 - Clicking a trace opens the inspector: date, sensor, season, uncertainty, status, and (later) the image thumbnail.
-- Time series: length change against date, points colored by sensor, with the OLS trend line and rate. Points are linked to the map: hover highlights, click selects.
+- Time series: length change against date, with the OLS trend line and slope. The source series has no sensor or trace column, so points are neutral (not colored by sensor) and are linked to the map by date, best effort: hover or click highlights the trace(s) on that date, and a point with no trace on its date (about 2% of rows) highlights nothing.
 - Coverage heatmap of traces per year by sensor (manuscript Fig. 9 style).
 - **Downloads panel:** full-resolution GPKG and time-series CSV, with file sizes from the manifest. These are plain links to R2, so nothing passes through the app.
 
@@ -357,8 +361,8 @@ Each milestone is built on its own branch and merged after review. Update the St
 | # | Milestone | Branch | Done when | Status |
 |---|---|---|---|---|
 | M0 | **Bucket spec signed off** (§4–5) | `feature/project-setup` | Plan reviewed; the developer creates the R2 bucket, `r2.dev` URL and CORS policy (not needed until M2) | Spec done; bucket pending |
-| M1 | Prep pipeline on 3 glaciers | `feature/prep-pipeline` | `build.py --glaciers GID1,GID2,GID100` produces valid output; tests pass | **Next** |
-| M2 | Full build + upload | `feature/upload` | All 295 glaciers built, invariants pass, `v1/` uploaded, `manifest.json` checked from the public URL | — |
+| M1 | Prep pipeline on 3 glaciers | `feature/prep-pipeline` | `build.py --glaciers GID1,GID2,GID100` produces valid output; tests pass | **Done** (full 295-glacier build also verified; rebuild from a clean tree for M2) |
+| M2 | Full build + upload | `feature/upload` | All 295 glaciers built, invariants pass, `v1/` uploaded, `manifest.json` checked from the public URL | **Next** (needs the R2 bucket) |
 | M3 | App skeleton + overview | `feature/app-overview` | Deployed to Pages, loads `glaciers.json` from R2, map + table + filters work | — |
 | M4 | Glacier detail | `feature/glacier-detail` | Trace map, sensor/season/year filters, time series, inspector, downloads | — |
 | M5 | Polish | `feature/polish` | URL state, error states, mobile layout, accessibility pass, README (data citation + how to rebuild) | — |
