@@ -57,9 +57,9 @@ Raw archive: `~/Downloads/autoterm_data/` (1.8 GB of zips).
 | `label_shape_TermPicks.zip` | TermPicks training labels | Not used |
 
 ### Known data issues (the build must handle these)
-1. `Glacier Identification.csv` is Latin-1/cp1252 encoded (`Bjørk`, `Isbræ`).
+1. `Glacier Identification.csv`: the data rows are UTF-8 (`Isbræ`) but the header has a stray non-UTF-8 byte (`Bj\xbfrkID`). The parser skips the header and reads columns by position.
 2. **ROI strings look corrupted.** Digits seem to have been replaced by spaces (`"[-51.76,71.7 8,-51.52,71.777]"`). Repair rule TBD (§11 Q3). Until it's settled, the ROI is stored as `null` with the raw string kept for reference.
-3. `uncertainty_all.csv` has a BOM and ~700 trailing blank rows.
+3. `uncertainty_all.csv` has a BOM, ~700 trailing blank rows, and 77 `#N/A` cells (sensors with no data for that glacier), which become `null`.
 4. 3 glaciers have no time series, and 1 time series file has only a header. The build must allow a missing time series.
 5. The zips contain `__MACOSX/` junk; skip it.
 6. The time series area unit is labelled `10 km2`, which needs confirming against the manuscript or authors before area is shown in the UI. v1 charts use **length change (m)**, which is unambiguous.
@@ -241,7 +241,7 @@ prep/
 ```
 
 ### 6.1 Steps
-1. **Index.** Parse `Glacier Identification.csv` (cp1252) and `uncertainty_all.csv` (utf-8-sig, blank rows dropped), joined on glacier number.
+1. **Index.** Parse `Glacier Identification.csv` and `uncertainty_all.csv` (utf-8-sig, blank rows dropped, `#N/A` → `null`), joined on glacier number.
 2. **Traces, one glacier at a time** (memory stays bounded; the biggest is ~65 MB `.shp`):
    - Normalize attributes: strip padding, parse the date, map the sensor name to its code, parse uncertainty to float.
    - Assign trace IDs and check they're unique.
