@@ -110,7 +110,7 @@ autoterm/
 |---|---|---|---|
 | `latest.json` | `application/json` | — | `public, max-age=60` |
 | `v*/**/*.json`, `*.geojson` | `application/json` / `application/geo+json` | `gzip` (uploaded pre-compressed) | `public, max-age=31536000, immutable` |
-| `v*/**/*.csv` | `text/csv; charset=utf-8` | `gzip` | immutable (as above) |
+| `v*/**/*.csv` | `text/csv; charset=utf-8` | — (small, downloaded as-is) | immutable (as above) |
 | `v*/**/*.gpkg` | `application/geopackage+sqlite3` | — (download as-is) | immutable, plus `Content-Disposition: attachment` |
 | `v*/**/*.webp` | `image/webp` | — | immutable |
 | `*.pmtiles`, `*.tif` (later) | `application/vnd.pmtiles`, `image/tiff` | **never gzip**, because range requests must work | immutable |
