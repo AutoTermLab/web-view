@@ -12,6 +12,7 @@ Static web app (GitHub Pages) for viewing and inspecting AutoTerm Greenland glac
 | Manuscript (Zhang et al., 2023, *The Cryosphere*) | `references/manuscript.md` (git-ignored) |
 | Implementation plan, bucket layout, file schemas | `docs/implementation-plan.md` |
 | Data prep pipeline | `prep/` (planned) |
+| Imagery data prep (one-off): scenes and previews for the published traces | `docs/imagery-procedure.md`; code on the `archive/imagery-2026-11/*` tags |
 | Built data, ready for upload | `dist-data/` (git-ignored) |
 | Upload script (rclone → R2) | `prep/upload.sh` (run by the developer, not in the sandbox: R2 is firewalled and the credentials stay on their machine) |
 | Web app | `app/` (planned) |
