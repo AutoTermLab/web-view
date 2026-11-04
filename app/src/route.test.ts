@@ -2,10 +2,14 @@ import { describe, expect, it } from "vitest";
 import { formatRoute, parseRoute } from "./route";
 
 describe("parseRoute", () => {
-  it("defaults to the glacier list", () => {
-    expect(parseRoute("")).toEqual({ view: "list" });
-    expect(parseRoute("#/")).toEqual({ view: "list" });
-    expect(parseRoute("#/nonsense")).toEqual({ view: "list" });
+  it("defaults to the overview map", () => {
+    expect(parseRoute("")).toEqual({ view: "overview" });
+    expect(parseRoute("#/")).toEqual({ view: "overview" });
+    expect(parseRoute("#/nonsense")).toEqual({ view: "overview" });
+  });
+
+  it("reads the glacier list", () => {
+    expect(parseRoute("#/list")).toEqual({ view: "list" });
   });
 
   it("reads a glacier with its selected trace and scene", () => {
@@ -18,7 +22,7 @@ describe("parseRoute", () => {
 
 describe("formatRoute", () => {
   it("round-trips", () => {
-    for (const hash of ["#/", "#/glacier/GID1", "#/glacier/GID278?trace=GID278_19850610_L5&scene=LT05_008011_19850610"]) {
+    for (const hash of ["#/", "#/list", "#/glacier/GID1", "#/glacier/GID278?trace=GID278_19850610_L5&scene=LT05_008011_19850610"]) {
       expect(formatRoute(parseRoute(hash))).toBe(hash);
     }
   });

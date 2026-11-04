@@ -1,4 +1,4 @@
-// #/ : every glacier, filterable by id or name. (The overview map and filters come with M3.)
+// #/list : every glacier in a table, filterable by id or name; the keyboard and screen-reader route to the glaciers on the map (#/).
 import { loadGlaciers, type Glacier } from "../data";
 import { formatRoute } from "../route";
 import { el, showError } from "./common";
@@ -15,6 +15,7 @@ export function renderList(root: HTMLElement): () => void {
       for (const [g, tr] of rows) tr.hidden = !!q && !`${g.id} ${g.name ?? ""}`.toLowerCase().includes(q);
     };
     root.replaceChildren(
+      el("p", {}, el("a", { href: formatRoute({ view: "overview" }) }, "← Map of glaciers")),
       el("h1", {}, "AutoTerm glacier termini"),
       el("p", {}, `${glaciers.length} Greenland glaciers (data ${version}). Open one to compare its traces with the satellite scenes they were drawn on.`),
       search,

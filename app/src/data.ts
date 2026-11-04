@@ -13,6 +13,8 @@ export interface Glacier {
   id: string;
   num: number;
   name: string | null;
+  lat: number;
+  lon: number;
   bbox: [number, number, number, number];
   date_range: [string, string];
   counts: { total: number; by_sensor: Record<string, number> };

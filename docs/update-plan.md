@@ -9,7 +9,7 @@ Five features. Each gets its own branch, is reviewed, and is merged into `main` 
 | # | Feature | Branch | Complexity | Confidence | New dependency |
 |---|---|---|---|---|---|
 | 0 | Serve the data from the custom domain instead of `r2.dev` | `feature/custom-domain` | Low | High | None |
-| 1 | Overview map as the index page; table kept at `#/list` | `feature/overview-map` | Low–medium | High | None |
+| 1 | Overview map as the index page; table kept at `#/list` (**done**) | `feature/overview-map` | Low–medium | High | None |
 | 2 | Season filter in the glacier view | `feature/season-filter` | Low | High | None |
 | 3 | Trace coverage over time (year × month) | `feature/coverage-chart` | Medium | High | None (hand-drawn SVG) |
 | 4 | Download the traces as a zipped shapefile | `feature/trace-download` | Medium | High | None (own zip and shapefile writers) |

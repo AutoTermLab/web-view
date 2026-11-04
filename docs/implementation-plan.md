@@ -378,6 +378,7 @@ app/
 
 ### 8.2 Views
 **Overview (`#/`)**
+- **Built so far** (`feature/overview-map`, `docs/update-plan.md` §1): the map, one neutral-coloured marker per glacier sized by trace count, names from zoom 5, a hover popup (name, GID, traces) and click-through to the glacier. The table is at `#/list`, linked both ways, as the keyboard and screen-reader route. Trend colouring and the filters are still to come.
 - Map of Greenland with one marker per glacier, colored by trend slope (neutral diverging scale, no advance/retreat wording) and sized by trace count. Basemap (all views): OpenFreeMap's "Positron" style, a plain light-grey map from OpenStreetMap data (no API key, attribution shown). If its style can't be fetched, a blank background is used, so the data still shows.
 - Table with columns: ID, name, length-change trend, traces, date range, uncertainty. Sortable. The map and table filter together.
 - Filters: trend-slope range; minimum trace count for the selected sensors/seasons (e.g., "glaciers with ≥50 winter S1 traces"). Everything is computed from `glaciers.json` with no extra fetches.
@@ -429,7 +430,7 @@ Each milestone is built on its own branch and merged after review. Update the St
 | M1 | Prep pipeline on 3 glaciers | `feature/prep-pipeline` | `build.py --glaciers GID1,GID2,GID100` produces valid output; tests pass | **Done** (full 295-glacier build also verified; rebuild from a clean tree for M2) |
 | M2 | Full build + upload | `feature/upload` | All 295 glaciers built, invariants pass, `v1/` uploaded, `manifest.json` checked from the public URL | **Done** (`v1` uploaded 2026-10-22 from commit `958c5dc`; all 1,173 files verified against the manifest, §7) |
 | — | Imagery for published traces (one-off, `docs/imagery-procedure.md`) | `feature/previews` (others archived) | A scene and a linked preview for every published trace the data allows; uploaded and checked | **Done** (218,464 of 218,469 traces; uploaded 2026-11-04, full `rclone check` clean) |
-| M3 | App skeleton + overview | `feature/app-overview` | Deployed to Pages, loads `glaciers.json` from R2, map + table + filters work | **Next** |
+| M3 | App skeleton + overview | `feature/app-overview` | Deployed to Pages, loads `glaciers.json` from R2, map + table + filters work | **In progress** (map and table done on `feature/overview-map`; filters and the Pages deploy to come) |
 | M4 | Glacier detail | `feature/glacier-detail` | Trace map, sensor/season/year filters, time series, inspector, downloads | — |
 | M5 | Polish | `feature/polish` | URL state, error states, mobile layout, accessibility pass, README (data citation + how to rebuild) | — |
 | Later | Rejected images · full-record length-change trend · Greenland-wide PMTiles · ice-mask COGs · custom domain | — | — | — |
