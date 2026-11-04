@@ -48,17 +48,17 @@ function mount(root: HTMLElement, version: string, glaciers: Glacier[], style: S
     // Names need the basemap's fonts, which the blank fallback style doesn't have.
     if (style.glyphs) map.addLayer({ id: "labels", type: "symbol", source: "glaciers", minzoom: 5, layout: {
       "text-field": ["get", "label"], "text-font": ["Noto Sans Regular"], "text-size": 12,
-      "text-anchor": "left", "text-offset": [0.8, 0], "text-optional": true,
+      "text-anchor": "left", "text-justify": "left", "text-offset": [0.8, 0], "text-optional": true,
     }, paint: { "text-color": "#1d2127", "text-halo-color": "#fff", "text-halo-width": 1.2 } });
     map.once("idle", () => { window.ready = true; });
   });
 
   const popup = new Popup({ closeButton: false, closeOnClick: false, offset: 10 });
   map.on("mousemove", "glaciers", (e) => {
-    const { id, label, traces } = e.features![0].properties;
+    const { label, traces } = e.features![0].properties;
     map.getCanvas().style.cursor = "pointer";
     popup.setLngLat(e.lngLat).setDOMContent(el("div", {},
-      el("strong", {}, label), label === id ? "" : ` · ${id}`, el("br"), `${Number(traces).toLocaleString()} traces`)).addTo(map);
+      el("strong", {}, label), el("br"), `${Number(traces).toLocaleString()} traces`)).addTo(map);
   });
   map.on("mouseleave", "glaciers", () => { map.getCanvas().style.cursor = ""; popup.remove(); });
   map.on("click", "glaciers", (e) => { location.hash = formatRoute({ view: "glacier", id: e.features![0].properties.id }); });

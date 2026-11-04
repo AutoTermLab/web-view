@@ -10,7 +10,7 @@ export function glacierPoints(glaciers: Glacier[]): FeatureCollection<Point, Gla
     features: glaciers.map((g) => ({
       type: "Feature",
       geometry: { type: "Point", coordinates: [g.lon, g.lat] },
-      properties: { id: g.id, label: g.name ?? g.id, traces: g.counts.total },
+      properties: { id: g.id, label: g.name ? `${g.id} · ${g.name}` : g.id, traces: g.counts.total },
     })),
   };
 }
