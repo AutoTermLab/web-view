@@ -37,7 +37,8 @@ function mount(root: HTMLElement, version: string, glaciers: Glacier[], style: S
   map.addControl(new ScaleControl({ unit: "metric" }));
   if (import.meta.env.DEV) Object.assign(window, { map }); // for the browser checks
 
-  map.on("load", () => {
+  // "style.load", not "load": the markers needn't wait for every basemap tile
+  map.once("style.load", () => {
     map.addSource("glaciers", { type: "geojson", data: glacierPoints(glaciers) });
     map.addLayer({ id: "glaciers", type: "circle", source: "glaciers", paint: {
       "circle-color": MARKER_COLOR, "circle-opacity": 0.85, "circle-stroke-color": "#fff", "circle-stroke-width": 1,

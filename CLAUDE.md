@@ -70,6 +70,10 @@ docker run --rm --network host -v "$PWD/shots:/out" web-view-browser \
 # console errors + failed requests as JSON (exit 1 if any)
 docker run --rm --network host web-view-browser probe.py console http://localhost:5173/
 
+# time opening a glacier (map, traces, scene, basemap); use a glacier not opened before, since tile caches warm up
+docker run --rm --network host web-view-browser shot.py http://localhost:5173/web-view/#/list -o /tmp/x.png \
+  --wait 'window.ready === true' --settle 25 --eval "$(sed s/GLACIER/GID150/ tools/browser/glacier-timing.js)" | grep TIMING
+
 # check data URLs (status, content type, parsed JSON)
 docker run --rm web-view-browser probe.py http https://autoterm.bandicoots.net/autoterm/latest.json
 ```
