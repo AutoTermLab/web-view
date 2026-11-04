@@ -378,7 +378,7 @@ app/
 
 ### 8.2 Views
 **Overview (`#/`)**
-- Map of Greenland with one marker per glacier, colored by trend slope (neutral diverging scale, no advance/retreat wording) and sized by trace count. Basemap: Esri World Imagery raster tiles (with attribution); fallback: OSM.
+- Map of Greenland with one marker per glacier, colored by trend slope (neutral diverging scale, no advance/retreat wording) and sized by trace count. Basemap (all views): OpenFreeMap's "Positron" style, a plain light-grey map from OpenStreetMap data (no API key, attribution shown). If its style can't be fetched, a blank background is used, so the data still shows.
 - Table with columns: ID, name, length-change trend, traces, date range, uncertainty. Sortable. The map and table filter together.
 - Filters: trend-slope range; minimum trace count for the selected sensors/seasons (e.g., "glaciers with ≥50 winter S1 traces"). Everything is computed from `glaciers.json` with no extra fetches.
 
