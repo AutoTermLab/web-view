@@ -32,7 +32,7 @@ A static web app, hosted on GitHub Pages, for browsing and inspecting the AutoTe
 | Topic | Decision |
 |---|---|
 | Hosting (app) | GitHub Pages, deployed by GitHub Actions |
-| Hosting (data) | Cloudflare R2. Live on `https://pub-f0be383784914488861cad529a904412.r2.dev/autoterm`; a custom domain (the developer has one on Cloudflare) comes later. Only `DATA_BASE_URL` changes when it does. `v1` was uploaded 2026-10-22 and verified (§7) |
+| Hosting (data) | Cloudflare R2. Live on the custom domain `https://autoterm.bandicoots.net/autoterm` since 2026-11-04 (first on `r2.dev`, to be disabled once the deployed site has switched). Only `DATA_BASE_URL` changed. `v1` was uploaded 2026-10-22 and verified (§7) |
 | Data organization | Small files per glacier at predictable paths, under an immutable versioned prefix (§4) |
 | Resolution | **Both.** Simplified traces for display, plus full-resolution GeoPackage per glacier for download. Revisit only if performance becomes a problem |
 | Storage budget | Under 10 GB total (R2 free tier). With the previews it is 9.97 GB (`v1` 3.42 GB + previews 6.55 GB), just under (§4.4) |
@@ -140,7 +140,7 @@ autoterm/
 - Display data (all glaciers): ~250 MB raw, ~65 MB gzipped (extrapolated from GID1).
 - Full-resolution GeoPackages: ~3–3.5 GB.
 - About 3.5 GB per version. With the previews (6.55 GB, shared by all versions), `v1` alone uses 9.97 GB (9.29 GiB), just under 10 GB. A second version takes it over. R2 storage over the free allowance costs about $0.015 per GB-month, so each extra version adds roughly 5 cents a month (§11 Q6).
-- `r2.dev` is rate-limited and not CDN-cached. That's fine for development and light use; move to a custom domain before announcing the viewer publicly. Cloudflare publishes no number for the limit (§12).
+- `r2.dev` is rate-limited and not CDN-cached, so the data is now served from the custom domain `autoterm.bandicoots.net`, with a Cache Rule. Cloudflare publishes no number for the `r2.dev` limit (§12).
 
 ### 4.5 Imagery (`images/`)
 - **What:** one preview per downloaded scene: 352,062 AVIFs for 295 glaciers. Each is a single band, stretched to 8 bits and halved in size, with no-data transparent. Median 8.7 KB, 1 in 100 over 155 KB, largest 558 KB.
@@ -360,7 +360,7 @@ app/
   vite.config.ts            base: '/web-view/' for GitHub Pages
   src/
     main.ts                 bootstrap: fetch latest.json → glaciers.json, init router
-    config.ts               DATA_BASE_URL (env: VITE_DATA_BASE_URL), defaults to https://pub-f0be383784914488861cad529a904412.r2.dev/autoterm
+    config.ts               DATA_BASE_URL (env: VITE_DATA_BASE_URL), defaults to https://autoterm.bandicoots.net/autoterm
     data.ts                 typed fetchers + in-memory cache; one place that knows the bucket layout (versioned data and images/)
     types.ts                TS types mirroring §5 schemas
     state.ts                filter state ↔ URL query string (shareable links)
@@ -437,7 +437,7 @@ Each milestone is built on its own branch and merged after review. Update the St
 ---
 
 ## 11. Open questions
-Already decided: start on `r2.dev` (custom domain later); host full-resolution downloads (§2). For everything below, build with the stated default until the developer answers.
+Already decided: start on `r2.dev`, then the custom domain (moved 2026-11-04); host full-resolution downloads (§2). For everything below, build with the stated default until the developer answers.
 
 1. **Trend period:** is v1's 2013–2021 slope acceptable, with the full-record trend as a later item? (Assumed yes.)
 2. **Season scheme:** meteorological (assumed), or melt/non-melt? Can both be offered?
@@ -452,7 +452,7 @@ Already decided: start on `r2.dev` (custom domain later); host full-resolution d
 ## 12. Risks
 | Risk | Mitigation |
 |---|---|
-| `r2.dev` rate limits during heavier use (observed: HTTP 429 when 16 parallel requests were sent; Cloudflare publishes no number). Previews add many small requests | Load previews one at a time, on trace selection (§8.2). Move to a custom domain (config-only change) before sharing the viewer publicly. Cache JSON/GeoJSON/GPKG there with a Cache Rule, since they aren't in Cloudflare's default cached extensions; include `.avif` too, unconfirmed on that list. Verify `cf-cache-status`, gzip pass-through and CORS headers on cached responses |
+| `r2.dev` rate limits during heavier use (observed: HTTP 429 when 16 parallel requests were sent; Cloudflare publishes no number). Previews add many small requests | Load previews one at a time, on trace selection (§8.2). **Done 2026-11-04:** moved to the custom domain `autoterm.bandicoots.net`, with a Cache Rule making every file on it eligible for cache (JSON/GeoJSON/GPKG aren't in Cloudflare's default cached extensions). Checked 2026-11-04: gzip passes through, CORS allows both origins and no others, and files match `dist-data/` byte for byte. Every file type (JSON, GeoJSON, GPKG, CSV, AVIF) is cached: `MISS`, then `HIT`. Cloudflare keeps a separate cached copy per `Origin` and `Accept-Encoding` (`Vary`), so CORS headers stay correct, and clients that don't accept gzip get plain JSON |
 | Large glaciers make the detail view slow on mobile | Measure in M4; if needed, raise the tolerance or split traces per decade (layout allows extra files) |
 | Source attribute inconsistencies in some of the 295 files | Invariants in §6.2 fail loudly; fixture tests for each problem found |
 | ~~`r2.dev` may not pass pre-gzipped objects through unchanged~~ | Verified OK on `v1` (§7): served with `Content-Encoding: gzip` to clients that accept it |

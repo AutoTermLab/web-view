@@ -3,7 +3,7 @@ import type { FeatureCollection, LineString } from "geojson";
 import type { Scene, Trace } from "./scenes";
 
 export const DATA_BASE_URL: string =
-  import.meta.env.VITE_DATA_BASE_URL || "https://pub-f0be383784914488861cad529a904412.r2.dev/autoterm"; // empty in CI when unset
+  import.meta.env.VITE_DATA_BASE_URL || "https://autoterm.bandicoots.net/autoterm"; // empty in CI when unset
 
 export const versionUrl = (base: string, version: string, path: string) => `${base}/${version}/${path}`;
 export const imagesIndexUrl = (base: string, glacier: string) => `${base}/images/${glacier}/images.json`;

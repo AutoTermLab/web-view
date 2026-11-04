@@ -33,7 +33,7 @@ jobs:
       - run: npm test
       - run: npm run build
         env:
-          # Repository variable; when unset, the app uses the r2.dev URL in src/data.ts.
+          # Repository variable; when unset, the app uses the default URL in src/data.ts.
           VITE_DATA_BASE_URL: ${{ vars.DATA_BASE_URL }}
       - uses: actions/configure-pages@v6
       - uses: actions/upload-pages-artifact@v5
