@@ -15,7 +15,7 @@ Static web app (GitHub Pages) for viewing and inspecting AutoTerm Greenland glac
 | Imagery data prep (one-off): scenes and previews for the published traces | `docs/imagery-procedure.md`; code on the `archive/imagery-2026-11/*` tags |
 | Built data, ready for upload | `dist-data/` (git-ignored) |
 | Upload script (rclone → R2) | `prep/upload.sh` (run by the developer, not in the sandbox: R2 is firewalled and the credentials stay on their machine) |
-| Web app | `app/` (planned) |
+| Web app (Vite + TypeScript + MapLibre) | `app/`: `npm ci`, `npm run dev` (port 5173, the only local origin the bucket's CORS allows; `npm run preview` uses it too), `npm test`. Published by `.github/workflows/pages.yml` on push to `main`. In dev builds `window.map` is the MapLibre map, for the browser checks |
 | Browser tool for visual checks | `tools/browser/` |
 | Published data | `https://pub-f0be383784914488861cad529a904412.r2.dev/autoterm` (R2 via `r2.dev`; `v1` is live). Set as `VITE_DATA_BASE_URL`; the app fetches `<base>/latest.json`, then `<base>/<version>/glaciers.json`. A custom domain is planned later |
 | GitHub repo / Pages | `AutoTermLab/web-view` → `https://autotermlab.github.io/web-view/` |

@@ -150,6 +150,11 @@ autoterm/
   - about 3,500 traces rely on Landsat Tier 2 scenes, which for L5 align worse (median 30 m against 15 m for Tier 1);
   - GID85's large S1 and S2 scenes are mostly at 20 m instead of 10 m.
   - `images.json` doesn't record the tier yet, so the label needs a rebuild of the indexes first.
+- **Placement: each preview is warped into Web Mercator in the browser** (`app/src/warp.ts`, 2026-11-04). The previews are in their scene's UTM zone, and MapLibre draws an image linearly between its corners in Mercator, which stretches with latitude. Drawn straight from the four corners, a preview's pixels land off their true position. Over 600 random scenes, the worst point per scene is off by a median 3.6 m, 15 m at the 90th percentile, 160 m at the 99th and 770 m at worst. On GID85's 80 × 100 km Landsat 5 scene of 1985-04-20 it was 1.4–1.8 km, with MapLibre 6's default perspective warp.
+  - **How:** the app reads the UTM zone off the corners (only the true zone turns them back into an axis-aligned rectangle: within 1.1 m for all 352,062 previews, and it matched the GeoTIFF for 3,000 of 3,000 checked). It then resamples the preview, nearest neighbour, onto a Mercator grid whose corners are an exact rectangle. The UTM projection is our own (Krüger series), tested against pyproj to the millimetre.
+  - **Result:** in tests, pixels land within 1.5 preview pixels of their true position, which is the nearest-neighbour rounding. The largest preview (2,099 × 2,928) takes about 100 ms. In the browser, GID85's scene moved 15–18 screen pixels north, as predicted.
+  - **Data:** the uploaded previews and `images.json` are unchanged. Every scene is in a UTM north zone (18–28; 5,607 sampled). A scene in another projection would need its EPSG code in `images.json`.
+  - **Limit:** for 395 small previews a neighbouring zone also fits within 50 m, so a wrong pick shifts them by at most about that.
 - **Built by** `prep/build_previews.py` and uploaded by hand (`docs/imagery-procedure.md`, steps 6 and 8). `prep/upload.sh` has no images mode.
 
 ---
@@ -383,8 +388,8 @@ app/
 - Clicking a trace opens the inspector: date, sensor, season, uncertainty, status, and the scene it was drawn on.
 - **Source imagery:**
   - **Loading:** fetches `images/<glacier>/images.json` with the traces, as a third request. A preview loads only when a trace is selected, never all of a glacier's scenes at once, which can be up to 7,633. This keeps requests well under the `r2.dev` rate limit.
-  - **Display:** the preview is a MapLibre `image` source placed by its four `corners`, drawn under the traces and over the basemap, with an opacity slider. The basemap stays visible through the transparent no-data area.
-  - **More than one scene for a trace:** the inspector lists them, and the user can step through them.
+  - **Display:** the preview is warped into Web Mercator (§4.5) and shown as a MapLibre `image` source, drawn under the traces and over the basemap, with an opacity slider. The basemap stays visible through the transparent no-data area.
+  - **More than one scene for a trace:** ranked by the share of the trace's vertices inside each scene, best first, and the share is shown ("Holds 62% of the trace"). Some linked scenes are slivers at the edge of the glacier box that miss the trace entirely, e.g. GID85 1985-04-20. The user can step through them.
   - **Trace with no scene** (5 in v1): "No scene available for this date".
   - **Labels:** "Landsat Tier 2: may be offset by tens of metres" on those scenes, once `images.json` has the tier (§5.6); scene id, date and sensor on every preview.
 - Time series: length change against date, with the OLS trend line and slope. The source series has no sensor or trace column, so points are neutral (not colored by sensor) and are linked to the map by date, best effort: hover or click highlights the trace(s) on that date, and a point with no trace on its date (about 2% of rows) highlights nothing.
