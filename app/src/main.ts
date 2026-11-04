@@ -5,6 +5,7 @@ import "./styles.css";
 import { parseRoute } from "./route";
 import { renderGlacier } from "./views/glacier";
 import { renderList } from "./views/list";
+import { renderOverview } from "./views/overview";
 
 declare global {
   interface Window { ready?: boolean } // set once a view has finished loading (for the screenshot tool)
@@ -20,7 +21,7 @@ function render() {
   teardown?.();
   window.ready = false;
   const route = parseRoute(location.hash);
-  teardown = route.view === "glacier" ? renderGlacier(app, route) : renderList(app);
+  teardown = route.view === "glacier" ? renderGlacier(app, route) : route.view === "list" ? renderList(app) : renderOverview(app);
 }
 
 addEventListener("hashchange", render);

@@ -4,6 +4,7 @@ import { DATA_BASE_URL, imageUrl, loadGlacier, type Glacier, type Traces } from 
 import { formatRoute } from "../route";
 import { nearest, rankScenes, scenesByTrace, step, visibleTraces, type Scene, type Trace } from "../scenes";
 import { inferZone, warpToMercator } from "../warp";
+import { loadBasemap } from "./basemap";
 import { el, showError } from "./common";
 
 const SENSORS = ["L5", "L7", "L8", "S1", "S2"];
@@ -14,17 +15,6 @@ const SENSOR_COLORS: Record<string, string> = { // Okabe–Ito, readable over im
   L5: "#E69F00", L7: "#56B4E9", L8: "#009E73", S1: "#F0E442", S2: "#CC79A7",
 };
 const SELECTED_COLOR = "#ff3b30";
-
-// OpenFreeMap "Positron", a plain light-grey map (OpenStreetMap data, no API key). If its style can't be fetched, fall back to a blank
-// background, so the traces and scenes still show: a style that fails to load would stop the whole map.
-const BASEMAP_URL = "https://tiles.openfreemap.org/styles/positron";
-const FALLBACK: StyleSpecification = {
-  version: 8, sources: {}, layers: [{ id: "background", type: "background", paint: { "background-color": "#e9ebee" } }],
-};
-let basemap: Promise<StyleSpecification> | undefined;
-const loadBasemap = () => basemap ??= fetch(BASEMAP_URL)
-  .then((r) => { if (!r.ok) throw new Error(`${r.status} for ${BASEMAP_URL}`); return r.json(); })
-  .catch((error) => { console.warn("Basemap unavailable, using a blank background:", error); return FALLBACK; });
 
 type GlacierRoute = { id: string; trace?: string; scene?: string };
 
@@ -78,7 +68,7 @@ function mount(root: HTMLElement, route: GlacierRoute, glacier: Glacier,
 
   const mapBox = el("div", { className: "map" });
   root.replaceChildren(mapBox, el("aside", { className: "panel" },
-    el("a", { href: formatRoute({ view: "list" }) }, "← All glaciers"),
+    el("a", { href: formatRoute({ view: "overview" }) }, "← All glaciers"),
     el("h1", {}, glacier.id, glacier.name ? el("small", {}, ` ${glacier.name}`) : ""),
     el("fieldset", {}, el("legend", {}, "Sensors"), ...sensorBoxes),
     el("div", { className: "stepper" }, prev, slider, next), position,
