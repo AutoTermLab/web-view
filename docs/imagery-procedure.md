@@ -9,7 +9,7 @@ How the scenes and previews behind the v1 traces were made (October 27 to Novemb
 | Traces covered | 218,464 of 218,469 have a scene on their date and sensor, and a linked preview |
 | Not covered | 5 traces, all Landsat 5, with no scene that day in Earth Engine: GID97 1988-05-23, GID100 and GID101 1993-08-24, GID285 and GID286 1993-06-28. Only the authors' archive has them |
 | Scenes | 352,118 zips, 400.3 GB: S2 172,264, S1 68,414, L8 50,965, L7 38,831, L5 21,596. In `/home/oxygen/Downloads/autoterm_data/scenes/GID<n>/<sensor>/<scene>.zip` |
-| Previews | 352,062 AVIFs plus one `images.json` per glacier, 6.8 GB, in `dist-data/images/`. Not uploaded yet |
+| Previews | 352,062 AVIFs plus one `images.json` per glacier: 6.09 GiB and 7.2 MiB as rclone counts them (6.8 GB on disk by `du`), in `dist-data/images/`. Live on R2 at `autoterm/images/` since 2026-11-04 (step 8) |
 
 **Caveats for the viewer:**
 - About 3,500 traces rely on Landsat Tier 2 scenes. For L5 these sit further from the traces (median 30 m against 15 m for Tier 1, and 31% beyond 60 m against 8%), with no common direction. Label them; don't present them as precisely aligned.
@@ -140,13 +140,42 @@ cd prep && uv run python overlay_check.py --scenes /home/oxygen/Downloads/autote
 - **Reading it:** use S2 as the control, since the authors drew on the same product. Results are indicative only. The method can't tell misregistration from a hazy image with no clear front, and the traces carry the authors' own error (mean 79 m).
 - **Findings:** L8 Collection 2 shows no systematic offset beyond about 10 m, and Landsat 5 Tier 2 is the one weak spot (see Result).
 
+### 8. Upload (developer)
+
+Done 2026-11-04 by hand with rclone, from the repo root. `prep/upload.sh` only handles versioned folders. The previews go to an unversioned `autoterm/images/` prefix beside `v1/`, since the scenes don't change between data versions (layout and headers: `implementation-plan.md` §4).
+
+Previews first, so no index ever points at a missing image. The options are written out in full so the commands also work in fish:
+
+```bash
+rclone copy dist-data/images r2:BUCKET/autoterm/images \
+  --include '*.avif' --exclude '*.part' --s3-no-check-bucket --transfers 32 --checkers 32 \
+  --header-upload "Content-Type: image/avif" \
+  --header-upload "Cache-Control: public, max-age=604800" \
+  --progress --log-file previews-upload.log --log-level INFO
+
+rclone copy dist-data/images r2:BUCKET/autoterm/images \
+  --include 'images.json' --exclude '*.part' --s3-no-check-bucket --transfers 32 --checkers 32 \
+  --header-upload "Content-Type: application/json" \
+  --header-upload "Content-Encoding: gzip" \
+  --header-upload "Cache-Control: public, max-age=300"
+
+rclone check dist-data/images r2:BUCKET/autoterm/images --one-way --exclude '*.part' --s3-no-check-bucket
+```
+
+- **Dry runs:** 352,062 previews (6.092 GiB) and 295 indexes (7.170 MiB), matching the build.
+- **Log and check:** the upload log has no errors, and the full `rclone check` found no differences.
+- **From the sandbox:**
+  - the index is `application/json`, gzipped, `max-age=300`; the preview is `image/avif`, `max-age=604800`;
+  - an `Origin: https://autotermlab.github.io` request gets `Access-Control-Allow-Origin` back;
+  - a sample of 52 files (12 indexes, 40 previews) is byte-identical to `dist-data/images/`.
+- **Headers can't be fixed by rerunning:** rclone skips unchanged files, so it won't rewrite their headers. A wrong header means uploading those files again (e.g. with `--ignore-times`).
+- **After rebuilding the indexes** (e.g. to add the tier), rerun only the `images.json` pass, then the check.
+
 ### Still to do
 
-- **Before upload:**
-  - record each scene's tier and the data version in `images.json`;
-  - add an `images/` rule to `prep/upload.sh` (unversioned prefix);
-  - write the imagery design into `implementation-plan.md` §8.2.
-- **Possible refinement:** link each trace only to the same-day scenes that actually overlap it.
+- Record each scene's tier and the data version in `images.json`, then re-upload the 295 indexes (step 8, second pass).
+- Decide whether `prep/upload.sh` gets an `--images` mode. It's only needed for re-uploading the indexes.
+- **Possible refinement:** link each trace only to the same-day scenes that actually overlap it. Today a third of the traces (71,683) link to more than one scene, up to 36.
 
 ## Pitfalls met (and how they were handled)
 

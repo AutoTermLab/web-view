@@ -13,6 +13,7 @@ A static web app, hosted on GitHub Pages, for browsing and inspecting the AutoTe
 - Organize and filter by **sensor** (Landsat 5/7/8, Sentinel-1/2), **season**, and **length-change trend** (called "retreat rate" in early notes).
 - Glacier detail view: terminus traces on a satellite basemap, colored by date or sensor, plus a time series of terminus change.
 - Per-trace inspection: date, sensor, uncertainty, and status.
+- **Source imagery:** the satellite scene each published trace was drawn on, shown as a preview under the trace. It covers 218,464 of 218,469 traces (§4.5, §5.6). How the scenes and previews were made is in `docs/imagery-procedure.md`.
 - Download individual sets through the viewer: full-resolution traces per glacier (GeoPackage), plus the per-glacier time series (CSV).
 
 ### Later (designed for now, not built in v1)
@@ -34,7 +35,7 @@ A static web app, hosted on GitHub Pages, for browsing and inspecting the AutoTe
 | Hosting (data) | Cloudflare R2. Live on `https://pub-f0be383784914488861cad529a904412.r2.dev/autoterm`; a custom domain (the developer has one on Cloudflare) comes later. Only `DATA_BASE_URL` changes when it does. `v1` was uploaded 2026-10-22 and verified (§7) |
 | Data organization | Small files per glacier at predictable paths, under an immutable versioned prefix (§4) |
 | Resolution | **Both.** Simplified traces for display, plus full-resolution GeoPackage per glacier for download. Revisit only if performance becomes a problem |
-| Storage budget | Under 10 GB total (R2 free tier) |
+| Storage budget | Under 10 GB total (R2 free tier). With the previews it is 9.97 GB (`v1` 3.42 GB + previews 6.55 GB), just under (§4.4) |
 | Frontend | Vite + TypeScript (no UI framework), MapLibre GL JS, Observable Plot |
 | Data prep | Python, run locally with `uv`; the raw archive never enters the repo or the bucket |
 | Tests | `pytest` (prep), Vitest (app logic), `tools/browser/` (visual and console checks, run only before the final merge) — see §8.4 |
@@ -91,17 +92,22 @@ autoterm/
         download/
           GID1_traces.gpkg             full-resolution traces (all attributes)
           GID1_timeseries.csv          time series as CSV
-        images/                        (later) thumbnails, one per trace: {trace_id}.webp
       GID2/
       …
     overview/                          (later) traces.pmtiles
     icemask/                           (later) 2018.tif, 2019.tif, 2020.tif as COG
+  images/                              scene previews, NOT versioned (live since 2026-11-04, §4.5)
+    GID1/
+      images.json                      index of the glacier's scenes: corners, linked trace ids (§5.6)
+      {scene_id}.avif                  one preview per scene, e.g. LT05_008011_19850610.avif
+    GID2/
+    …
 ```
 
 ### 4.1 Conventions
 - **Glacier key:** `GID{n}`, matching the source file names. Kept as a string so future tributary suffixes (`GID28a`, manuscript §5.5) need no schema change.
 - **Trace ID:** `GID{n}_{YYYYMMDD}_{SENSOR}`, with sensor codes `L5 L7 L8 S1 S2`. Example: `GID1_20170209_S1`. If a collision occurs (e.g., two S1 passes on the same day), add a `_{k}` suffix starting at 2, and log it.
-- **Versioning:** everything under `v{N}/` is write-once. A rebuild publishes `v{N+1}/` and then updates `latest.json`. Old versions stay in place for reproducibility while under the storage budget.
+- **Versioning:** everything under `v{N}/` is write-once. A rebuild publishes `v{N+1}/` and then updates `latest.json`. Old versions stay in place for reproducibility while under the storage budget. `images/` is the exception: it sits outside the versions, because a scene doesn't change when the trace data is rebuilt. Its indexes can be replaced in place (short cache, §4.2).
 - **Relative paths everywhere:** JSON files refer to other files by paths relative to the version root (`glaciers/GID1/traces.geojson`). The app joins them with `DATA_BASE_URL` + version.
 
 ### 4.2 HTTP headers per file type
@@ -112,7 +118,8 @@ autoterm/
 | `v*/**/*.json`, `*.geojson` | `application/json` / `application/geo+json` | `gzip` (uploaded pre-compressed) | `public, max-age=31536000, immutable` |
 | `v*/**/*.csv` | `text/csv; charset=utf-8` | — (small, downloaded as-is) | immutable (as above) |
 | `v*/**/*.gpkg` | `application/geopackage+sqlite3` | — (download as-is) | immutable, plus `Content-Disposition: attachment` |
-| `v*/**/*.webp` | `image/webp` | — | immutable |
+| `images/*/*.avif` | `image/avif` | — | `public, max-age=604800` (a week: rebuilt only if a scene is fetched again) |
+| `images/*/images.json` | `application/json` | `gzip` (uploaded pre-compressed) | `public, max-age=300` (will be rebuilt to add the tier and data version) |
 | `*.pmtiles`, `*.tif` (later) | `application/vnd.pmtiles`, `image/tiff` | **never gzip**, because range requests must work | immutable |
 
 ### 4.3 Bucket CORS policy
@@ -132,8 +139,18 @@ autoterm/
 ### 4.4 Size estimate
 - Display data (all glaciers): ~250 MB raw, ~65 MB gzipped (extrapolated from GID1).
 - Full-resolution GeoPackages: ~3–3.5 GB.
-- About 3.5 GB per version, so two versions fit under 10 GB. If a third is needed, delete the oldest version or reuse unchanged downloads (§11 Q6).
-- `r2.dev` is rate-limited and not CDN-cached. That's fine for development and light use; move to a custom domain before announcing the viewer publicly.
+- About 3.5 GB per version. With the previews (6.55 GB, shared by all versions), `v1` alone uses 9.97 GB (9.29 GiB), just under 10 GB. A second version takes it over. R2 storage over the free allowance costs about $0.015 per GB-month, so each extra version adds roughly 5 cents a month (§11 Q6).
+- `r2.dev` is rate-limited and not CDN-cached. That's fine for development and light use; move to a custom domain before announcing the viewer publicly. Cloudflare publishes no number for the limit (§12).
+
+### 4.5 Imagery (`images/`)
+- **What:** one preview per downloaded scene: 352,062 AVIFs for 295 glaciers. Each is a single band, stretched to 8 bits and halved in size, with no-data transparent. Median 8.7 KB, 1 in 100 over 155 KB, largest 558 KB.
+- **Linking:** each glacier's `images.json` (§5.6) lists its scenes with their corners and the ids of the traces drawn on them, matched by date and sensor. 218,464 of 218,469 traces are linked. The other 5 are Landsat 5 traces with no scene that day in Earth Engine.
+- **More than one scene per trace:** 146,781 traces (67%) link to one scene. The rest link to 2 to 36, e.g. adjacent tiles or orbits on the same day. Each linked scene covers part of the glacier box, but not necessarily the trace (a refinement is listed in `docs/imagery-procedure.md`).
+- **Caveats the viewer must show:**
+  - about 3,500 traces rely on Landsat Tier 2 scenes, which for L5 align worse (median 30 m against 15 m for Tier 1);
+  - GID85's large S1 and S2 scenes are mostly at 20 m instead of 10 m.
+  - `images.json` doesn't record the tier yet, so the label needs a rebuild of the indexes first.
+- **Built by** `prep/build_previews.py` and uploaded by hand (`docs/imagery-procedure.md`, steps 6 and 8). `prep/upload.sh` has no images mode.
 
 ---
 
@@ -200,11 +217,11 @@ A FeatureCollection of LineStrings, lon/lat rounded to 5 decimals (~1 m), Z drop
     "uncertainty_m": 24.67,
     "status": "passed",             // later: "rejected"
     "reject_reason": null,          // later: "flowline_intersections" | "length" | "curvature" | "area_change"
-    "image": null                   // later: "glaciers/GID1/images/GID1_20170209_S1.webp"
+    "image": null                   // always null in v1: published traces get their scenes from images.json (§5.6)
   }
 }
 ```
-`status`, `reject_reason` and `image` are present from v1, so rejected data can be added later without changing the schema. Rejected traces will go in the same file (≲2× size), and the UI filters them by `status`.
+`status`, `reject_reason` and `image` are present from v1, so rejected data can be added later without changing the schema. Rejected traces will go in the same file (≲2× size), and the UI filters them by `status`. The trace-to-scene link is kept in `images/<glacier>/images.json` rather than here, so the imagery can change without a new data version.
 
 ### 5.3 `timeseries.json`
 Stored by column rather than as one object per row, which makes it smaller and easy to plot:
@@ -226,6 +243,24 @@ Stored by column rather than as one object per row, which makes it smaller and e
   "build": { "git_commit": "…", "simplify_tolerance_m": 5, "season_scheme": "meteorological" },
   "files": [ { "path": "glaciers.json", "bytes": 98213, "sha256": "…", "content_type": "application/json", "encoding": "gzip" } ] }
 ```
+
+### 5.6 `images/<glacier>/images.json`
+Gzipped, one per glacier, at `<DATA_BASE_URL>/images/GID1/images.json`. Sizes: 1.5 KB to 132 KB gzipped, median 24 KB.
+```jsonc
+{ "glacier": "GID278",
+  "scenes": [ {
+    "id": "LT05_008011_19850610",                 // Earth Engine scene id
+    "date": "1985-06-10", "sensor": "L5",
+    "image": "GID278/LT05_008011_19850610.avif",  // relative to images/: the URL is <DATA_BASE_URL>/images/<image>
+    "corners": [[-50.11899, 69.26891], [-49.47322, 69.28686], [-49.43613, 69.1058], [-50.07659, 69.08803]],
+                                                  // lon/lat: top-left, top-right, bottom-right, bottom-left (MapLibre image source order)
+    "traces": ["GID278_19850610_L5"]              // trace ids from traces.geojson drawn on this date and sensor
+  } ] }
+```
+- Every scene links to at least one trace. To find a trace's scenes, invert `traces` once when the file loads.
+- **Planned additions,** which only need the indexes rebuilt and re-uploaded:
+  - each scene's `tier` (Landsat `T1`/`T2`, for the Tier 2 label);
+  - the data version the links were built from.
 
 ---
 
@@ -321,7 +356,7 @@ app/
   src/
     main.ts                 bootstrap: fetch latest.json → glaciers.json, init router
     config.ts               DATA_BASE_URL (env: VITE_DATA_BASE_URL), defaults to https://pub-f0be383784914488861cad529a904412.r2.dev/autoterm
-    data.ts                 typed fetchers + in-memory cache; one place that knows the bucket layout
+    data.ts                 typed fetchers + in-memory cache; one place that knows the bucket layout (versioned data and images/)
     types.ts                TS types mirroring §5 schemas
     state.ts                filter state ↔ URL query string (shareable links)
     views/
@@ -345,7 +380,13 @@ app/
 **Glacier detail (`#/glacier/GID1?sensor=S1,S2&season=DJF`)**
 - Fetches `traces.geojson` and `timeseries.json` for that glacier (2 requests).
 - Map: traces colored by date (sequential color scale) or by sensor (toggle). Filtering by sensor, season and year range uses MapLibre `setFilter`, which needs no reload.
-- Clicking a trace opens the inspector: date, sensor, season, uncertainty, status, and (later) the image thumbnail.
+- Clicking a trace opens the inspector: date, sensor, season, uncertainty, status, and the scene it was drawn on.
+- **Source imagery:**
+  - **Loading:** fetches `images/<glacier>/images.json` with the traces, as a third request. A preview loads only when a trace is selected, never all of a glacier's scenes at once, which can be up to 7,633. This keeps requests well under the `r2.dev` rate limit.
+  - **Display:** the preview is a MapLibre `image` source placed by its four `corners`, drawn under the traces and over the basemap, with an opacity slider. The basemap stays visible through the transparent no-data area.
+  - **More than one scene for a trace:** the inspector lists them, and the user can step through them.
+  - **Trace with no scene** (5 in v1): "No scene available for this date".
+  - **Labels:** "Landsat Tier 2: may be offset by tens of metres" on those scenes, once `images.json` has the tier (§5.6); scene id, date and sensor on every preview.
 - Time series: length change against date, with the OLS trend line and slope. The source series has no sensor or trace column, so points are neutral (not colored by sensor) and are linked to the map by date, best effort: hover or click highlights the trace(s) on that date, and a point with no trace on its date (about 2% of rows) highlights nothing.
 - Coverage heatmap of traces per year by sensor (manuscript Fig. 9 style).
 - **Downloads panel:** full-resolution GPKG and time-series CSV, with file sizes from the manifest. These are plain links to R2, so nothing passes through the app.
@@ -382,6 +423,7 @@ Each milestone is built on its own branch and merged after review. Update the St
 | M0 | **Bucket spec signed off** (§4–5) | `feature/project-setup` | Plan reviewed; the developer creates the R2 bucket, `r2.dev` URL and CORS policy (not needed until M2) | **Done** (bucket, `r2.dev` URL and CORS in place) |
 | M1 | Prep pipeline on 3 glaciers | `feature/prep-pipeline` | `build.py --glaciers GID1,GID2,GID100` produces valid output; tests pass | **Done** (full 295-glacier build also verified; rebuild from a clean tree for M2) |
 | M2 | Full build + upload | `feature/upload` | All 295 glaciers built, invariants pass, `v1/` uploaded, `manifest.json` checked from the public URL | **Done** (`v1` uploaded 2026-10-22 from commit `958c5dc`; all 1,173 files verified against the manifest, §7) |
+| — | Imagery for published traces (one-off, `docs/imagery-procedure.md`) | `feature/previews` (others archived) | A scene and a linked preview for every published trace the data allows; uploaded and checked | **Done** (218,464 of 218,469 traces; uploaded 2026-11-04, full `rclone check` clean) |
 | M3 | App skeleton + overview | `feature/app-overview` | Deployed to Pages, loads `glaciers.json` from R2, map + table + filters work | **Next** |
 | M4 | Glacier detail | `feature/glacier-detail` | Trace map, sensor/season/year filters, time series, inspector, downloads | — |
 | M5 | Polish | `feature/polish` | URL state, error states, mobile layout, accessibility pass, README (data citation + how to rebuild) | — |
@@ -405,7 +447,7 @@ Already decided: start on `r2.dev` (custom domain later); host full-resolution d
 ## 12. Risks
 | Risk | Mitigation |
 |---|---|
-| `r2.dev` rate limits during heavier use (observed: HTTP 429 when 16 parallel requests were sent) | Move to a custom domain (config-only change) before sharing the viewer publicly; cache JSON/GeoJSON/GPKG with a Cache Rule there (not in Cloudflare's default cached extensions; verify `cf-cache-status`) |
+| `r2.dev` rate limits during heavier use (observed: HTTP 429 when 16 parallel requests were sent; Cloudflare publishes no number). Previews add many small requests | Load previews one at a time, on trace selection (§8.2). Move to a custom domain (config-only change) before sharing the viewer publicly. Cache JSON/GeoJSON/GPKG there with a Cache Rule, since they aren't in Cloudflare's default cached extensions; include `.avif` too, unconfirmed on that list. Verify `cf-cache-status`, gzip pass-through and CORS headers on cached responses |
 | Large glaciers make the detail view slow on mobile | Measure in M4; if needed, raise the tolerance or split traces per decade (layout allows extra files) |
 | Source attribute inconsistencies in some of the 295 files | Invariants in §6.2 fail loudly; fixture tests for each problem found |
 | ~~`r2.dev` may not pass pre-gzipped objects through unchanged~~ | Verified OK on `v1` (§7): served with `Content-Encoding: gzip` to clients that accept it |
