@@ -15,20 +15,16 @@ const SENSOR_COLORS: Record<string, string> = { // Okabe–Ito, readable over im
 };
 const SELECTED_COLOR = "#ff3b30";
 
-const BASEMAP: StyleSpecification = {
-  version: 8,
-  sources: {
-    esri: {
-      type: "raster", tileSize: 256, maxzoom: 19,
-      tiles: ["https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"],
-      attribution: "Basemap: Esri, Maxar, Earthstar Geographics, and the GIS User Community",
-    },
-  },
-  layers: [
-    { id: "background", type: "background", paint: { "background-color": "#20242a" } },
-    { id: "basemap", type: "raster", source: "esri" },
-  ],
+// OpenFreeMap "Positron", a plain light-grey map (OpenStreetMap data, no API key). If its style can't be fetched, fall back to a blank
+// background, so the traces and scenes still show: a style that fails to load would stop the whole map.
+const BASEMAP_URL = "https://tiles.openfreemap.org/styles/positron";
+const FALLBACK: StyleSpecification = {
+  version: 8, sources: {}, layers: [{ id: "background", type: "background", paint: { "background-color": "#e9ebee" } }],
 };
+let basemap: Promise<StyleSpecification> | undefined;
+const loadBasemap = () => basemap ??= fetch(BASEMAP_URL)
+  .then((r) => { if (!r.ok) throw new Error(`${r.status} for ${BASEMAP_URL}`); return r.json(); })
+  .catch((error) => { console.warn("Basemap unavailable, using a blank background:", error); return FALLBACK; });
 
 type GlacierRoute = { id: string; trace?: string; scene?: string };
 
@@ -36,15 +32,15 @@ export function renderGlacier(root: HTMLElement, route: GlacierRoute): () => voi
   root.className = "glacier";
   root.replaceChildren(el("p", { className: "message" }, `Loading ${route.id}…`));
   let cleanup = () => {};
-  loadGlacier(route.id).then(
-    ({ glacier, traces, scenes }) => { cleanup = mount(root, route, glacier, traces.features, scenes); },
+  Promise.all([loadGlacier(route.id), loadBasemap()]).then(
+    ([{ glacier, traces, scenes }, style]) => { cleanup = mount(root, route, glacier, traces.features, scenes, style); },
     (error) => showError(root, error, () => { cleanup(); cleanup = renderGlacier(root, route); }),
   );
   return () => cleanup();
 }
 
 function mount(root: HTMLElement, route: GlacierRoute, glacier: Glacier,
-               features: Traces["features"], allScenes: Scene[]): () => void {
+               features: Traces["features"], allScenes: Scene[], style: StyleSpecification): () => void {
   const traces = features.map((f) => f.properties);
   const geometry = new Map(features.map((f) => [f.properties.trace_id, f.geometry.coordinates as [number, number][]]));
   const byId = new Map(traces.map((t) => [t.trace_id, t]));
@@ -94,7 +90,7 @@ function mount(root: HTMLElement, route: GlacierRoute, glacier: Glacier,
 
   // --- map
   const map = new MapLibre({
-    container: mapBox, style: BASEMAP, attributionControl: { compact: true },
+    container: mapBox, style, attributionControl: { compact: true },
     bounds: glacier.bbox, fitBoundsOptions: { padding: 40 },
   });
   map.addControl(new NavigationControl({ showCompass: false }));
