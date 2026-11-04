@@ -95,12 +95,15 @@ function mount(root: HTMLElement, route: GlacierRoute, glacier: Glacier,
     map.addLayer({ id: "selected", type: "line", source: "traces", paint: { "line-color": SELECTED_COLOR, "line-width": 2 } });
     update();
   });
+  // The trace layers exist only once the map has loaded; the pointer can be over the map before that.
   map.on("click", (e) => {
+    if (!map.getLayer("traces")) return;
     const { x, y } = e.point;
     const hit = map.queryRenderedFeatures([[x - 5, y - 5], [x + 5, y + 5]], { layers: ["traces", "selected"] })[0];
     if (hit) select(hit.properties.trace_id);
   });
   map.on("mousemove", (e) => {
+    if (!map.getLayer("traces")) return;
     const { x, y } = e.point;
     const hit = map.queryRenderedFeatures([[x - 5, y - 5], [x + 5, y + 5]], { layers: ["traces"] }).length > 0;
     map.getCanvas().style.cursor = hit ? "pointer" : "";
