@@ -409,7 +409,7 @@ app/
 ### 8.4 Testing
 - **Prep (`pytest`):** unit tests run on tiny synthetic fixtures built inside the test (a few LineStrings and CSV rows), so tests never need the raw archive. A separate integration test runs `build.py --glaciers GID1` against the real archive and is skipped when `/home/oxygen/Downloads/autoterm_data/` is absent.
 - **App (Vitest):** pure logic only, such as filters, URL-state round-trip, season labels and data path building. Fixtures are small JSON files matching §5.
-- **Visual (`tools/browser/`):** `probe.py console` (no errors, no failed requests) and `shot.py` screenshots of the overview and a glacier detail view, run against `vite preview` with a local `dist-data/` subset. Run before the final merge only (see CLAUDE.md).
+- **Visual (`tools/browser/`):** `probe.py console` (no errors, no failed requests) and `shot.py` screenshots of the overview and a glacier detail view; `glacier-timing.js` times opening a glacier (§12), run against `vite preview` with a local `dist-data/` subset. Run before the final merge only (see CLAUDE.md).
 
 ---
 
@@ -454,6 +454,7 @@ Already decided: start on `r2.dev`, then the custom domain (moved 2026-11-04); h
 | Risk | Mitigation |
 |---|---|
 | `r2.dev` rate limits during heavier use (observed: HTTP 429 when 16 parallel requests were sent; Cloudflare publishes no number). Previews add many small requests | Load previews one at a time, on trace selection (§8.2). **Done 2026-11-04:** moved to the custom domain `autoterm.bandicoots.net`, with a Cache Rule making every file on it eligible for cache (JSON/GeoJSON/GPKG aren't in Cloudflare's default cached extensions). Checked 2026-11-04: gzip passes through, CORS allows both origins and no others, and files match `dist-data/` byte for byte. Every file type (JSON, GeoJSON, GPKG, CSV, AVIF) is cached: `MISS`, then `HIT`. Cloudflare keeps a separate cached copy per `Origin` and `Accept-Encoding` (`Vary`), so CORS headers stay correct, and clients that don't accept gzip get plain JSON |
+| Basemap tiles are slow the first time a glacier is opened: OpenFreeMap's Cloudflare cache is cold for most of Greenland, so a tile takes 1–6 s, then about 0.05 s once cached | Keep OpenFreeMap and its cache (decided 2026-11-04; self-hosting a Greenland PMTiles extract was rejected as not worth the complexity). The data doesn't wait for the basemap: the map is created as soon as `glaciers.json` is in, while the traces download, and layers are added on `style.load`, not `load`, which waits for every tile on screen. Measured on glaciers not opened before (`tools/browser/glacier-timing.js`): before, traces 3.5–6.5 s and scene 3.7–6.7 s (GID40, 120, 250); after, traces 0.27–0.36 s and scene 0.53–0.56 s, with the basemap filling in up to 3 s (GID60, 140, 260) |
 | Large glaciers make the detail view slow on mobile | Measure in M4; if needed, raise the tolerance or split traces per decade (layout allows extra files) |
 | Source attribute inconsistencies in some of the 295 files | Invariants in §6.2 fail loudly; fixture tests for each problem found |
 | ~~`r2.dev` may not pass pre-gzipped objects through unchanged~~ | Verified OK on `v1` (§7): served with `Content-Encoding: gzip` to clients that accept it |

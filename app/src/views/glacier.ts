@@ -1,6 +1,6 @@
 // #/glacier/GID278?trace=…&scene=… : the glacier's traces over the scene the selected trace was drawn on (plan §8.2).
 import { Map as MapLibre, NavigationControl, ScaleControl, type ImageSource, type StyleSpecification } from "maplibre-gl";
-import { DATA_BASE_URL, imageUrl, loadGlacier, type Glacier, type Traces } from "../data";
+import { DATA_BASE_URL, imageUrl, loadGlacier, loadGlaciers, type Glacier, type Traces } from "../data";
 import { formatRoute } from "../route";
 import { nearest, rankScenes, scenesByTrace, step, visibleTraces, type Scene, type Trace } from "../scenes";
 import { inferZone, warpToMercator } from "../warp";
@@ -21,16 +21,50 @@ type GlacierRoute = { id: string; trace?: string; scene?: string };
 export function renderGlacier(root: HTMLElement, route: GlacierRoute): () => void {
   root.className = "glacier";
   root.replaceChildren(el("p", { className: "message" }, `Loading ${route.id}…`));
-  let cleanup = () => {};
-  Promise.all([loadGlacier(route.id), loadBasemap()]).then(
-    ([{ glacier, traces, scenes }, style]) => { cleanup = mount(root, route, glacier, traces.features, scenes, style); },
-    (error) => showError(root, error, () => { cleanup(); cleanup = renderGlacier(root, route); }),
-  );
-  return () => cleanup();
+  let cleanup = () => {}, closed = false;
+  // The map starts on its basemap as soon as the glacier's box is known (glaciers.json, usually cached), while the
+  // traces and scene index download: basemap tiles are often the slowest part (plan §12).
+  const data = loadGlacier(route.id);
+  data.catch(() => {}); // handled below; this only stops an unhandled-rejection warning if glaciers.json fails first
+  Promise.all([loadGlaciers(), loadBasemap()]).then(async ([{ glaciers }, style]) => {
+    if (closed) return; // left before the basemap arrived
+    const glacier = glaciers.find((g) => g.id === route.id);
+    if (!glacier) return void await data; // rejects with "No glacier …"
+    const mapBox = el("div", { className: "map" });
+    const panel = el("aside", { className: "panel" }, el("p", { className: "message" }, `Loading ${route.id}…`));
+    root.replaceChildren(mapBox, panel);
+    const map = createMap(mapBox, glacier, style);
+    cleanup = () => map.remove();
+    const { traces, scenes } = await data;
+    if (!closed) cleanup = mount(map, panel, route, glacier, traces.features, scenes);
+  }).catch((error) => {
+    if (closed) return;
+    cleanup();
+    cleanup = () => {};
+    showError(root, error, () => { cleanup = renderGlacier(root, route); });
+  });
+  return () => { closed = true; cleanup(); };
 }
 
-function mount(root: HTMLElement, route: GlacierRoute, glacier: Glacier,
-               features: Traces["features"], allScenes: Scene[], style: StyleSpecification): () => void {
+function createMap(container: HTMLElement, glacier: Glacier, style: StyleSpecification) {
+  const map = new MapLibre({
+    container, style, attributionControl: { compact: true }, bounds: glacier.bbox, fitBoundsOptions: { padding: 40 },
+  });
+  map.addControl(new NavigationControl({ showCompass: false }));
+  map.addControl(new ScaleControl({ unit: "metric" }));
+  if (import.meta.env.DEV) Object.assign(window, { map }); // for the browser checks
+  return map;
+}
+
+/** Run `fn` once the style is parsed, which is all addLayer needs: the "load" event also waits for every basemap
+ *  tile on screen, which held back the traces and the scene by seconds on a cold tile cache. */
+function onStyle(map: MapLibre, fn: () => void) {
+  if (map.style?._loaded) fn();
+  else map.once("style.load", fn);
+}
+
+function mount(map: MapLibre, panel: HTMLElement, route: GlacierRoute, glacier: Glacier,
+               features: Traces["features"], allScenes: Scene[]): () => void {
   const traces = features.map((f) => f.properties);
   const geometry = new Map(features.map((f) => [f.properties.trace_id, f.geometry.coordinates as [number, number][]]));
   const byId = new Map(traces.map((t) => [t.trace_id, t]));
@@ -66,8 +100,7 @@ function mount(root: HTMLElement, route: GlacierRoute, glacier: Glacier,
   const others = el("input", { type: "checkbox", checked: false });
   others.onchange = () => map.setLayoutProperty("traces", "visibility", others.checked ? "visible" : "none");
 
-  const mapBox = el("div", { className: "map" });
-  root.replaceChildren(mapBox, el("aside", { className: "panel" },
+  panel.replaceChildren(
     el("a", { href: formatRoute({ view: "overview" }) }, "← All glaciers"),
     el("h1", {}, glacier.id, glacier.name ? el("small", {}, ` ${glacier.name}`) : ""),
     el("fieldset", {}, el("legend", {}, "Sensors"), ...sensorBoxes),
@@ -76,17 +109,10 @@ function mount(root: HTMLElement, route: GlacierRoute, glacier: Glacier,
     el("label", { className: "row" }, "Image opacity", opacity),
     el("label", { className: "row" }, others, "Show the other traces"),
     el("p", { className: "hint" }, "Step through the traces by date with ← and →, or show the other traces and click one on the map."),
-  ));
+  );
 
   // --- map
-  const map = new MapLibre({
-    container: mapBox, style, attributionControl: { compact: true },
-    bounds: glacier.bbox, fitBoundsOptions: { padding: 40 },
-  });
-  map.addControl(new NavigationControl({ showCompass: false }));
-  map.addControl(new ScaleControl({ unit: "metric" }));
-  if (import.meta.env.DEV) Object.assign(window, { map }); // for the browser checks
-  map.on("load", () => {
+  onStyle(map, () => {
     map.addSource("traces", { type: "geojson", data: { type: "FeatureCollection", features } as never, promoteId: "trace_id" });
     const color = ["match", ["get", "sensor"], ...SENSORS.flatMap((s) => [s, SENSOR_COLORS[s]]), "#fff"] as never;
     map.addLayer({ id: "traces", type: "line", source: "traces", layout: { visibility: "none" },
@@ -95,7 +121,7 @@ function mount(root: HTMLElement, route: GlacierRoute, glacier: Glacier,
     map.addLayer({ id: "selected", type: "line", source: "traces", paint: { "line-color": SELECTED_COLOR, "line-width": 2 } });
     update();
   });
-  // The trace layers exist only once the map has loaded; the pointer can be over the map before that.
+  // The trace layers exist only once the style has loaded and the data has arrived; the pointer can be over the map before that.
   map.on("click", (e) => {
     if (!map.getLayer("traces")) return;
     const { x, y } = e.point;
@@ -133,7 +159,7 @@ function mount(root: HTMLElement, route: GlacierRoute, glacier: Glacier,
     ].flatMap(([k, v]) => [el("dt", {}, k), el("dd", {}, v)]) : []));
     renderSceneInfo(sceneInfo, trace, ranked, scene, (id) => { sceneId = id; update(); });
 
-    if (!map.getLayer("traces")) return; // the map's load handler calls update() again
+    if (!map.getLayer("traces")) return; // onStyle above calls update() again
     map.setFilter("traces", ["in", ["get", "sensor"], ["literal", [...sensors]]]);
     for (const layer of ["selected", "selected-casing"]) map.setFilter(layer, ["==", ["get", "trace_id"], selected ?? ""]);
     showScene(map, scene).then(
