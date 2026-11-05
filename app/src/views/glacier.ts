@@ -10,6 +10,7 @@ import { inferZone, warpToMercator } from "../warp";
 import { loadBasemap } from "./basemap";
 import { el, showError } from "./common";
 import { coverageChart } from "./coverage";
+import { panelResizer } from "./resizer";
 
 const SENSORS = ["L5", "L7", "L8", "S1", "S2"];
 const SENSOR_NAMES: Record<string, string> = {
@@ -37,7 +38,7 @@ export function renderGlacier(root: HTMLElement, route: GlacierRoute): () => voi
     if (!glacier) return void await data; // rejects with "No glacier …"
     const mapBox = el("div", { className: "map" });
     const panel = el("aside", { className: "panel" }, el("p", { className: "message" }, `Loading ${route.id}…`));
-    root.replaceChildren(mapBox, panel);
+    root.replaceChildren(mapBox, panelResizer(root), panel);
     const map = createMap(mapBox, glacier, style);
     cleanup = () => map.remove();
     const { traces, scenes } = await data;
