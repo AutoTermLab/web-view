@@ -88,7 +88,16 @@ input[role="switch"]:checked { background: var(--accent); }
 input[role="switch"]:checked::before { transform: translateX(0.9rem); }
 input[role="switch"]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .coverage-box { margin: 0 0 0.75rem; }
-.coverage-box h2 { font-size: 1em; font-weight: 400; color: var(--muted); margin: 0 0 0.25rem; }
+.coverage-box h2, .downloads h2 { font-size: 1em; font-weight: 400; color: var(--muted); margin: 0 0 0.25rem; }
+.downloads { border-top: 1px solid var(--line); padding-top: 0.5rem; margin: 0.75rem 0; }
+.downloads a { display: inline-block; margin-top: 0.4rem; }
+.download-row { position: relative; display: flex; align-items: center; gap: 0.4rem; }
+.note-icon { flex: none; min-width: 0; width: 1.5rem; height: 1.5rem; padding: 0; border-radius: 50%; font-weight: 700; color: var(--accent); }
+.tip {
+  display: none; position: absolute; z-index: 5; left: 0; right: 0; top: 100%; margin-top: 0.3rem; padding: 0.4rem 0.6rem;
+  background: var(--bg); border: 1px solid var(--line); border-radius: 6px; box-shadow: 0 2px 6px rgb(0 0 0 / 0.2); font-size: 0.85em;
+}
+.note-icon:hover + .tip, .note-icon:focus + .tip, .note-box.open .tip { display: block; }
 .coverage { display: block; width: 100%; height: auto; }
 .coverage text { fill: var(--muted); font-size: 7px; dominant-baseline: middle; }
 .coverage .month { text-anchor: end; }

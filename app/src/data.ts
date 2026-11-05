@@ -18,7 +18,7 @@ export interface Glacier {
   bbox: [number, number, number, number];
   date_range: [string, string];
   counts: { total: number; by_sensor: Record<string, number> };
-  files: { traces: string };
+  files: { traces: string; download_traces: string }; // download_traces: the full-resolution GeoPackage
 }
 
 export type Traces = FeatureCollection<LineString, Trace>;

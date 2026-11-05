@@ -3,7 +3,8 @@
 import { Map as MapLibre, NavigationControl, ScaleControl, type ImageSource, type StyleSpecification } from "maplibre-gl";
 import { SEASON_COLORS, SENSOR_COLORS, traceColor } from "../colors";
 import { coverage } from "../coverage";
-import { DATA_BASE_URL, imageUrl, loadGlacier, loadGlaciers, type Glacier, type Traces } from "../data";
+import { DATA_BASE_URL, imageUrl, loadGlacier, loadGlaciers, versionUrl, type Glacier, type Traces } from "../data";
+import { saveBlob, SIMPLIFIED_NOTE, traceDownloadName, traceReadme, tracesZip } from "../download";
 import { formatRoute } from "../route";
 import { nearest, rankScenes, scenesByTrace, step, visibleTraces, type Scene, type Trace } from "../scenes";
 import { inferZone, warpToMercator } from "../warp";
@@ -32,7 +33,7 @@ export function renderGlacier(root: HTMLElement, route: GlacierRoute): () => voi
   // traces and scene index download: basemap tiles are often the slowest part (plan §12).
   const data = loadGlacier(route.id);
   data.catch(() => {}); // handled below; this only stops an unhandled-rejection warning if glaciers.json fails first
-  Promise.all([loadGlaciers(), loadBasemap()]).then(async ([{ glaciers }, style]) => {
+  Promise.all([loadGlaciers(), loadBasemap()]).then(async ([{ version, glaciers }, style]) => {
     if (closed) return; // left before the basemap arrived
     const glacier = glaciers.find((g) => g.id === route.id);
     if (!glacier) return void await data; // rejects with "No glacier …"
@@ -42,7 +43,7 @@ export function renderGlacier(root: HTMLElement, route: GlacierRoute): () => voi
     const map = createMap(mapBox, glacier, style);
     cleanup = () => map.remove();
     const { traces, scenes } = await data;
-    if (!closed) cleanup = mount(map, panel, route, glacier, traces.features, scenes);
+    if (!closed) cleanup = mount(map, panel, route, version, glacier, traces.features, scenes);
   }).catch((error) => {
     if (closed) return;
     cleanup();
@@ -69,13 +70,15 @@ function onStyle(map: MapLibre, fn: () => void) {
   else map.once("style.load", fn);
 }
 
-function mount(map: MapLibre, panel: HTMLElement, route: GlacierRoute, glacier: Glacier,
+function mount(map: MapLibre, panel: HTMLElement, route: GlacierRoute, version: string, glacier: Glacier,
                features: Traces["features"], allScenes: Scene[]): () => void {
   const traces = features.map((f) => f.properties);
   const geometry = new Map(features.map((f) => [f.properties.trace_id, f.geometry.coordinates as [number, number][]]));
   const byId = new Map(traces.map((t) => [t.trace_id, t]));
   const sceneIndex = scenesByTrace(allScenes);
-  const sensors = new Set(SENSORS.filter((s) => glacier.counts.by_sensor[s]));
+  const featureById = new Map(features.map((f) => [f.properties.trace_id, f]));
+  const available = SENSORS.filter((s) => glacier.counts.by_sensor[s]);
+  const sensors = new Set(available);
   const chosen = SEASONS.filter((s) => route.seasons?.includes(s));
   const seasons = new Set(chosen.length ? chosen : SEASONS);
   let list = visibleTraces(traces, sensors, seasons);
@@ -123,6 +126,24 @@ function mount(map: MapLibre, panel: HTMLElement, route: GlacierRoute, glacier: 
   };
   panel.dataset.colorBy = bySeason.checked ? "season" : "sensor";
 
+  // --- downloads: the shown traces as a shapefile built here, or the full-resolution GeoPackage from the bucket
+  const geopackage = versionUrl(DATA_BASE_URL, version, glacier.files.download_traces);
+  const download = el("button", { className: "download", onclick: () => {
+    const chosen = { sensors: available.filter((s) => sensors.has(s)), seasons: SEASONS.filter((s) => seasons.has(s)) };
+    const stem = traceDownloadName(glacier.id, chosen.sensors, available, chosen.seasons);
+    const filters = [chosen.sensors.length < available.length ? `sensors ${chosen.sensors.join(", ")}` : "all sensors",
+                     chosen.seasons.length < SEASONS.length ? `seasons ${chosen.seasons.join(", ")}` : "all seasons"].join(", ");
+    const readme = traceReadme({ glacier: [glacier.id, glacier.name].filter(Boolean).join(" "), version, count: list.length,
+      filters, stem, geopackage, site: location.origin + location.pathname, date: new Date().toISOString().slice(0, 10) });
+    saveBlob(tracesZip(stem, list.map((t) => featureById.get(t.trace_id)!), readme), `${stem}.zip`);
+  } });
+  const noteBox = el("span", { className: "note-box" });
+  const info = el("button", { className: "note-icon", type: "button", ariaLabel: "About the shapefile geometry",
+                              onclick: () => noteBox.classList.toggle("open") }, "!");
+  const tip = el("span", { className: "tip", role: "tooltip", id: "simplified-note" }, SIMPLIFIED_NOTE);
+  info.setAttribute("aria-describedby", tip.id);
+  noteBox.append(info, tip);
+
   panel.replaceChildren(
     el("a", { href: formatRoute({ view: "overview" }) }, "← All glaciers"),
     el("h1", {}, glacier.id, glacier.name ? el("small", {}, ` ${glacier.name}`) : ""),
@@ -138,6 +159,9 @@ function mount(map: MapLibre, panel: HTMLElement, route: GlacierRoute, glacier: 
     traceInfo, sceneInfo,
     el("label", { className: "row" }, "Image opacity", opacity),
     el("label", { className: "row" }, others, "Show the other traces"),
+    el("section", { className: "downloads" }, el("h2", {}, "Download"),
+      el("div", { className: "download-row" }, download, noteBox),
+      el("a", { href: geopackage, download: "" }, "Full resolution, all traces (GeoPackage)")),
     el("p", { className: "hint" }, "Step through the traces by date with ← and →, or show the other traces and click one on the map."),
   );
 
@@ -190,6 +214,8 @@ function mount(map: MapLibre, panel: HTMLElement, route: GlacierRoute, glacier: 
     slider.value = String(Math.max(i, 0));
     prev.disabled = i <= 0;
     next.disabled = i < 0 || i >= list.length - 1;
+    download.textContent = `Download ${list.length.toLocaleString()} trace${list.length === 1 ? "" : "s"} (shapefile)`;
+    download.disabled = !list.length;
     position.textContent = list.length ? `Trace ${i + 1} of ${list.length.toLocaleString()}` : "No traces for these sensors and seasons";
 
     traceInfo.replaceChildren(...(trace ? [
