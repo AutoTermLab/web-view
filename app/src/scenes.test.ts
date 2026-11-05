@@ -4,8 +4,8 @@ import { nearest, rankScenes, scenesByTrace, step, visibleTraces, type Scene, ty
 const scene = (id: string, traces: string[]): Scene => ({
   id, date: "2020-01-01", sensor: "S2", image: `GID1/${id}.avif`, corners: [[0, 1], [1, 1], [1, 0], [0, 0]], traces,
 });
-const trace = (trace_id: string, date: string, sensor: string): Trace =>
-  ({ trace_id, date, sensor, season: "DJF", uncertainty_m: 10 });
+const trace = (trace_id: string, date: string, sensor: string, season = "DJF"): Trace =>
+  ({ trace_id, date, sensor, season, uncertainty_m: 10 });
 
 describe("scenesByTrace", () => {
   it("lists every scene a trace was linked to, in id order", () => {
@@ -33,9 +33,17 @@ describe("rankScenes", () => {
 });
 
 describe("visibleTraces", () => {
+  const all = new Set(["DJF", "MAM", "JJA", "SON"]);
+
   it("keeps the chosen sensors, sorted by date then id", () => {
     const traces = [trace("c", "2020-03-01", "S2"), trace("a", "2019-01-01", "L8"), trace("b", "2020-03-01", "S1")];
-    expect(visibleTraces(traces, new Set(["S1", "S2"])).map((t) => t.trace_id)).toEqual(["b", "c"]);
+    expect(visibleTraces(traces, new Set(["S1", "S2"]), all).map((t) => t.trace_id)).toEqual(["b", "c"]);
+  });
+
+  it("keeps the chosen seasons too", () => {
+    const traces = [trace("a", "2020-01-01", "S1", "DJF"), trace("b", "2020-07-01", "S1", "JJA"),
+                    trace("c", "2020-07-02", "L8", "JJA"), trace("d", "2020-10-01", "S1", "SON")];
+    expect(visibleTraces(traces, new Set(["S1"]), new Set(["DJF", "JJA"])).map((t) => t.trace_id)).toEqual(["a", "b"]);
   });
 });
 

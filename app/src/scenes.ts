@@ -48,9 +48,9 @@ function inside([x, y]: [number, number], polygon: [number, number][]): boolean 
   return hit;
 }
 
-export function visibleTraces(traces: Trace[], sensors: Set<string>): Trace[] {
+export function visibleTraces(traces: Trace[], sensors: Set<string>, seasons: Set<string>): Trace[] {
   return traces
-    .filter((t) => sensors.has(t.sensor))
+    .filter((t) => sensors.has(t.sensor) && seasons.has(t.season))
     .sort((a, b) => a.date.localeCompare(b.date) || a.trace_id.localeCompare(b.trace_id));
 }
 

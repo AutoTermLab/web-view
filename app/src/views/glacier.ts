@@ -1,5 +1,7 @@
-// #/glacier/GID278?trace=…&scene=… : the glacier's traces over the scene the selected trace was drawn on (plan §8.2).
+// #/glacier/GID278?trace=…&scene=…&season=JJA&color=season : the glacier's traces over the scene the selected trace was
+// drawn on (plan §8.2).
 import { Map as MapLibre, NavigationControl, ScaleControl, type ImageSource, type StyleSpecification } from "maplibre-gl";
+import { SEASON_COLORS, SENSOR_COLORS, traceColor } from "../colors";
 import { DATA_BASE_URL, imageUrl, loadGlacier, loadGlaciers, type Glacier, type Traces } from "../data";
 import { formatRoute } from "../route";
 import { nearest, rankScenes, scenesByTrace, step, visibleTraces, type Scene, type Trace } from "../scenes";
@@ -11,12 +13,13 @@ const SENSORS = ["L5", "L7", "L8", "S1", "S2"];
 const SENSOR_NAMES: Record<string, string> = {
   L5: "Landsat 5", L7: "Landsat 7", L8: "Landsat 8", S1: "Sentinel-1", S2: "Sentinel-2",
 };
-const SENSOR_COLORS: Record<string, string> = { // Okabe–Ito, readable over imagery
-  L5: "#E69F00", L7: "#56B4E9", L8: "#009E73", S1: "#F0E442", S2: "#CC79A7",
+const SEASONS = ["DJF", "MAM", "JJA", "SON"]; // meteorological (plan §6.3)
+const SEASON_MONTHS: Record<string, string> = {
+  DJF: "December–February", MAM: "March–May", JJA: "June–August", SON: "September–November",
 };
 const SELECTED_COLOR = "#ff3b30";
 
-type GlacierRoute = { id: string; trace?: string; scene?: string };
+type GlacierRoute = { id: string; trace?: string; scene?: string; seasons?: string[]; color?: "season" };
 
 export function renderGlacier(root: HTMLElement, route: GlacierRoute): () => void {
   root.className = "glacier";
@@ -70,23 +73,30 @@ function mount(map: MapLibre, panel: HTMLElement, route: GlacierRoute, glacier: 
   const byId = new Map(traces.map((t) => [t.trace_id, t]));
   const sceneIndex = scenesByTrace(allScenes);
   const sensors = new Set(SENSORS.filter((s) => glacier.counts.by_sensor[s]));
-  let list = visibleTraces(traces, sensors);
-  let selected: string | undefined = byId.has(route.trace ?? "") ? route.trace : list[0]?.trace_id;
+  const chosen = SEASONS.filter((s) => route.seasons?.includes(s));
+  const seasons = new Set(chosen.length ? chosen : SEASONS);
+  let list = visibleTraces(traces, sensors, seasons);
+  let selected = list.some((t) => t.trace_id === route.trace) ? route.trace : list[0]?.trace_id;
   let sceneId = route.scene;
 
   // --- panel
+  const swatch = (color: string) => {
+    const span = el("span", { className: "swatch" });
+    span.style.background = color;
+    return span;
+  };
   const sensorBoxes = [...sensors].map((s) => {
     const box = el("input", { type: "checkbox", checked: true, value: s });
-    box.onchange = () => {
-      box.checked ? sensors.add(s) : sensors.delete(s);
-      list = visibleTraces(traces, sensors);
-      if (!list.some((t) => t.trace_id === selected)) select(nearest(list, byId.get(selected!)?.date ?? ""));
-      else update();
-    };
-    const swatch = el("span", { className: "swatch" });
-    swatch.style.background = SENSOR_COLORS[s];
-    return el("label", { className: "sensor" }, box, swatch,
+    box.onchange = () => { box.checked ? sensors.add(s) : sensors.delete(s); refilter(); };
+    return el("label", { className: "sensor" }, box, swatch(SENSOR_COLORS[s]),
       `${SENSOR_NAMES[s]} (${glacier.counts.by_sensor[s].toLocaleString()})`);
+  });
+  const seasonBoxes = SEASONS.map((s) => {
+    const box = el("input", { type: "checkbox", checked: seasons.has(s), value: s });
+    box.onchange = () => { box.checked ? seasons.add(s) : seasons.delete(s); refilter(); };
+    const count = traces.filter((t) => t.season === s).length;
+    return el("label", { className: "season", title: SEASON_MONTHS[s] }, box, swatch(SEASON_COLORS[s]),
+      `${s} (${count.toLocaleString()})`);
   });
   const slider = el("input", { type: "range", min: "0", step: "1", ariaLabel: "Trace, by date" });
   slider.oninput = () => select(list[+slider.value]?.trace_id);
@@ -99,11 +109,23 @@ function mount(map: MapLibre, panel: HTMLElement, route: GlacierRoute, glacier: 
   opacity.oninput = () => map.setPaintProperty("scene", "raster-opacity", +opacity.value);
   const others = el("input", { type: "checkbox", checked: false });
   others.onchange = () => map.setLayoutProperty("traces", "visibility", others.checked ? "visible" : "none");
+  // The swatches beside the sensor or the season boxes are the legend; CSS shows the set that matches.
+  const bySeason = el("input", { type: "checkbox", role: "switch", checked: route.color === "season" });
+  bySeason.onchange = () => {
+    panel.dataset.colorBy = bySeason.checked ? "season" : "sensor";
+    map.setPaintProperty("traces", "line-color", traceColor(bySeason.checked ? "season" : "sensor") as never);
+    update();
+  };
+  panel.dataset.colorBy = bySeason.checked ? "season" : "sensor";
 
   panel.replaceChildren(
     el("a", { href: formatRoute({ view: "overview" }) }, "← All glaciers"),
     el("h1", {}, glacier.id, glacier.name ? el("small", {}, ` ${glacier.name}`) : ""),
     el("fieldset", {}, el("legend", {}, "Sensors"), ...sensorBoxes),
+    el("label", { className: "row" }, bySeason, "Color the traces by season"),
+    el("fieldset", {}, el("legend", {}, "Seasons"), el("div", { className: "seasons" }, ...seasonBoxes),
+      el("p", { className: "hint" }, "Winter (DJF) traces are nearly all from 2015 on, and mostly Sentinel-1 radar: optical " +
+        "sensors see nothing in the polar night. Comparing seasons mostly compares recent years.")),
     el("div", { className: "stepper" }, prev, slider, next), position,
     traceInfo, sceneInfo,
     el("label", { className: "row" }, "Image opacity", opacity),
@@ -114,9 +136,8 @@ function mount(map: MapLibre, panel: HTMLElement, route: GlacierRoute, glacier: 
   // --- map
   onStyle(map, () => {
     map.addSource("traces", { type: "geojson", data: { type: "FeatureCollection", features } as never, promoteId: "trace_id" });
-    const color = ["match", ["get", "sensor"], ...SENSORS.flatMap((s) => [s, SENSOR_COLORS[s]]), "#fff"] as never;
     map.addLayer({ id: "traces", type: "line", source: "traces", layout: { visibility: "none" },
-      paint: { "line-color": color, "line-width": 1, "line-opacity": 0.55 } });
+      paint: { "line-color": traceColor(bySeason.checked ? "season" : "sensor") as never, "line-width": 1, "line-opacity": 0.55 } });
     map.addLayer({ id: "selected-casing", type: "line", source: "traces", paint: { "line-color": "#000", "line-width": 4.5, "line-opacity": 0.7 } });
     map.addLayer({ id: "selected", type: "line", source: "traces", paint: { "line-color": SELECTED_COLOR, "line-width": 2 } });
     update();
@@ -135,6 +156,12 @@ function mount(map: MapLibre, panel: HTMLElement, route: GlacierRoute, glacier: 
     map.getCanvas().style.cursor = hit ? "pointer" : "";
   });
 
+  /** Apply the sensor and season choices; keep the selected trace if it is still shown, else the nearest by date. */
+  function refilter() {
+    list = visibleTraces(traces, sensors, seasons);
+    if (!list.some((t) => t.trace_id === selected)) select(nearest(list, byId.get(selected!)?.date ?? ""));
+    else update();
+  }
   function move(delta: number) { if (selected) select(step(list, selected, delta)); }
   function select(id: string | undefined) { selected = id; sceneId = undefined; update(); }
 
@@ -144,14 +171,16 @@ function mount(map: MapLibre, panel: HTMLElement, route: GlacierRoute, glacier: 
     const scenes = ranked.map((r) => r.scene);
     const scene = scenes.find((s) => s.id === sceneId) ?? scenes[0];
     sceneId = scene?.id;
-    history.replaceState(null, "", formatRoute({ view: "glacier", id: glacier.id, trace: selected, scene: sceneId }));
+    history.replaceState(null, "", formatRoute({ view: "glacier", id: glacier.id, trace: selected, scene: sceneId,
+      seasons: seasons.size < SEASONS.length ? SEASONS.filter((s) => seasons.has(s)) : undefined,
+      color: bySeason.checked ? "season" : undefined }));
 
     const i = list.findIndex((t) => t.trace_id === selected);
     slider.max = String(Math.max(list.length - 1, 0));
     slider.value = String(Math.max(i, 0));
     prev.disabled = i <= 0;
     next.disabled = i < 0 || i >= list.length - 1;
-    position.textContent = list.length ? `Trace ${i + 1} of ${list.length.toLocaleString()}` : "No traces for these sensors";
+    position.textContent = list.length ? `Trace ${i + 1} of ${list.length.toLocaleString()}` : "No traces for these sensors and seasons";
 
     traceInfo.replaceChildren(...(trace ? [
       ["Date", trace.date], ["Sensor", SENSOR_NAMES[trace.sensor]], ["Season", trace.season],
@@ -160,7 +189,8 @@ function mount(map: MapLibre, panel: HTMLElement, route: GlacierRoute, glacier: 
     renderSceneInfo(sceneInfo, trace, ranked, scene, (id) => { sceneId = id; update(); });
 
     if (!map.getLayer("traces")) return; // onStyle above calls update() again
-    map.setFilter("traces", ["in", ["get", "sensor"], ["literal", [...sensors]]]);
+    map.setFilter("traces", ["all", ["in", ["get", "sensor"], ["literal", [...sensors]]],
+      ["in", ["get", "season"], ["literal", [...seasons]]]]);
     for (const layer of ["selected", "selected-casing"]) map.setFilter(layer, ["==", ["get", "trace_id"], selected ?? ""]);
     showScene(map, scene).then(
       () => map.once("idle", () => { window.ready = true; }),
