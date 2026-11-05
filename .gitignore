@@ -11,3 +11,7 @@ node_modules/
 dist/
 .venv/
 shots/
+
+# working notes, kept out of git on purpose
+resume.md
+docs/temp-data-to-find.md
