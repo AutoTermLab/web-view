@@ -12,7 +12,7 @@ Five features. Each gets its own branch, is reviewed, and is merged into `main` 
 | 1 | Overview map as the index page; table kept at `#/list` (**done**) | `feature/overview-map` | Low–medium | High | None |
 | 2 | Season filter in the glacier view, plus coloring the traces by season (**done**) | `feature/season-filter` | Low | High | None |
 | 3 | Trace coverage over time (year × month), plus a resizable panel (**done**) | `feature/coverage-chart` | Medium | High | None (hand-drawn SVG) |
-| 4 | Download the traces as a zipped shapefile | `feature/trace-download` | Medium | High | None (own zip and shapefile writers) |
+| 4 | Download the traces as a zipped shapefile (**done**) | `feature/trace-download` | Medium | High | None (own zip and shapefile writers) |
 | 5 | Download the scene previews as a zip | `feature/image-download` | Medium–high | Medium | None (reuses the zip writer from 4) |
 
 **Complexity** is the amount of new code and moving parts. **Confidence** is how sure I am that it works as described, first time, without surprises.
@@ -157,6 +157,12 @@ Disable the `r2.dev` URL only after the deployed site has been switched over.
 **Risks:**
 - The largest glacier's display traces are 3.1 MB gzipped, about 20–30 MB as a shapefile, which is fine in memory.
 - The shapefile format itself is well documented. The format's own limits (2 GB, 10-character field names) don't apply here.
+
+**As built (2026-11-05):**
+- `app/src/zip.ts` (stored entries, CRC-32, returns a Blob so feature 5 can reuse it), `app/src/shapefile.ts`, `app/src/download.ts` (file name, `README.txt` with the note, filters, data version, field meanings and the citation). Under a "Download" heading, the button reads "N traces (shapefile)" and follows the filters.
+- **Round trip checked**, with one-off scripts that were not kept: the zip from the real button, captured in the browser, read with GDAL (`pyogrio`) and compared with `traces.geojson`. GID85 filtered to DJF (37 traces), GID278 with all traces (982) and GID278 filtered to MAM (274): the CRCs are valid, GDAL reads EPSG:4326 lines in UTF-8, `date` comes through as a date and `uncert_m` as a float, and every attribute and every vertex matches exactly. A wrong filter was caught (274 traces against 384 expected).
+- **Size and speed:** GID85, the largest trace file, gives an 8.5 MB zip in 133 ms; GID112, the most traces (1,547), 1.7 MB in 48 ms.
+- Not checked: opening the files in QGIS or ArcGIS by eye.
 
 ---
 
