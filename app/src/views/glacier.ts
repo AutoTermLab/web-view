@@ -1,5 +1,6 @@
 // #/glacier/GID278?trace=…&scene=…&season=JJA : the glacier's traces over the scene the selected trace was drawn on (plan §8.2).
 import { Map as MapLibre, NavigationControl, ScaleControl, type ImageSource, type StyleSpecification } from "maplibre-gl";
+import { SEASON_COLORS, SENSOR_COLORS, traceColor } from "../colors";
 import { DATA_BASE_URL, imageUrl, loadGlacier, loadGlaciers, type Glacier, type Traces } from "../data";
 import { formatRoute } from "../route";
 import { nearest, rankScenes, scenesByTrace, step, visibleTraces, type Scene, type Trace } from "../scenes";
@@ -10,9 +11,6 @@ import { el, showError } from "./common";
 const SENSORS = ["L5", "L7", "L8", "S1", "S2"];
 const SENSOR_NAMES: Record<string, string> = {
   L5: "Landsat 5", L7: "Landsat 7", L8: "Landsat 8", S1: "Sentinel-1", S2: "Sentinel-2",
-};
-const SENSOR_COLORS: Record<string, string> = { // Okabe–Ito, readable over imagery
-  L5: "#E69F00", L7: "#56B4E9", L8: "#009E73", S1: "#F0E442", S2: "#CC79A7",
 };
 const SEASONS = ["DJF", "MAM", "JJA", "SON"]; // meteorological (plan §6.3)
 const SEASON_MONTHS: Record<string, string> = {
@@ -81,19 +79,23 @@ function mount(map: MapLibre, panel: HTMLElement, route: GlacierRoute, glacier: 
   let sceneId = route.scene;
 
   // --- panel
+  const swatch = (color: string) => {
+    const span = el("span", { className: "swatch" });
+    span.style.background = color;
+    return span;
+  };
   const sensorBoxes = [...sensors].map((s) => {
     const box = el("input", { type: "checkbox", checked: true, value: s });
     box.onchange = () => { box.checked ? sensors.add(s) : sensors.delete(s); refilter(); };
-    const swatch = el("span", { className: "swatch" });
-    swatch.style.background = SENSOR_COLORS[s];
-    return el("label", { className: "sensor" }, box, swatch,
+    return el("label", { className: "sensor" }, box, swatch(SENSOR_COLORS[s]),
       `${SENSOR_NAMES[s]} (${glacier.counts.by_sensor[s].toLocaleString()})`);
   });
   const seasonBoxes = SEASONS.map((s) => {
     const box = el("input", { type: "checkbox", checked: seasons.has(s), value: s });
     box.onchange = () => { box.checked ? seasons.add(s) : seasons.delete(s); refilter(); };
     const count = traces.filter((t) => t.season === s).length;
-    return el("label", { className: "season", title: SEASON_MONTHS[s] }, box, `${s} (${count.toLocaleString()})`);
+    return el("label", { className: "season", title: SEASON_MONTHS[s] }, box, swatch(SEASON_COLORS[s]),
+      `${s} (${count.toLocaleString()})`);
   });
   const slider = el("input", { type: "range", min: "0", step: "1", ariaLabel: "Trace, by date" });
   slider.oninput = () => select(list[+slider.value]?.trace_id);
@@ -106,11 +108,19 @@ function mount(map: MapLibre, panel: HTMLElement, route: GlacierRoute, glacier: 
   opacity.oninput = () => map.setPaintProperty("scene", "raster-opacity", +opacity.value);
   const others = el("input", { type: "checkbox", checked: false });
   others.onchange = () => map.setLayoutProperty("traces", "visibility", others.checked ? "visible" : "none");
+  // The swatches beside the sensor or the season boxes are the legend; CSS shows the set that matches.
+  const bySeason = el("input", { type: "checkbox", role: "switch", checked: false });
+  bySeason.onchange = () => {
+    panel.dataset.colorBy = bySeason.checked ? "season" : "sensor";
+    map.setPaintProperty("traces", "line-color", traceColor(bySeason.checked ? "season" : "sensor") as never);
+  };
+  panel.dataset.colorBy = "sensor";
 
   panel.replaceChildren(
     el("a", { href: formatRoute({ view: "overview" }) }, "← All glaciers"),
     el("h1", {}, glacier.id, glacier.name ? el("small", {}, ` ${glacier.name}`) : ""),
     el("fieldset", {}, el("legend", {}, "Sensors"), ...sensorBoxes),
+    el("label", { className: "row" }, bySeason, "Color the traces by season"),
     el("fieldset", {}, el("legend", {}, "Seasons"), el("div", { className: "seasons" }, ...seasonBoxes),
       el("p", { className: "hint" }, "Winter (DJF) traces are nearly all from 2015 on, and mostly Sentinel-1 radar: optical " +
         "sensors see nothing in the polar night. Comparing seasons mostly compares recent years.")),
@@ -124,9 +134,8 @@ function mount(map: MapLibre, panel: HTMLElement, route: GlacierRoute, glacier: 
   // --- map
   onStyle(map, () => {
     map.addSource("traces", { type: "geojson", data: { type: "FeatureCollection", features } as never, promoteId: "trace_id" });
-    const color = ["match", ["get", "sensor"], ...SENSORS.flatMap((s) => [s, SENSOR_COLORS[s]]), "#fff"] as never;
     map.addLayer({ id: "traces", type: "line", source: "traces", layout: { visibility: "none" },
-      paint: { "line-color": color, "line-width": 1, "line-opacity": 0.55 } });
+      paint: { "line-color": traceColor(bySeason.checked ? "season" : "sensor") as never, "line-width": 1, "line-opacity": 0.55 } });
     map.addLayer({ id: "selected-casing", type: "line", source: "traces", paint: { "line-color": "#000", "line-width": 4.5, "line-opacity": 0.7 } });
     map.addLayer({ id: "selected", type: "line", source: "traces", paint: { "line-color": SELECTED_COLOR, "line-width": 2 } });
     update();
