@@ -11,7 +11,7 @@ Five features. Each gets its own branch, is reviewed, and is merged into `main` 
 | 0 | Serve the data from the custom domain instead of `r2.dev` (**done**) | `feature/custom-domain` | Low | High | None |
 | 1 | Overview map as the index page; table kept at `#/list` (**done**) | `feature/overview-map` | Low–medium | High | None |
 | 2 | Season filter in the glacier view, plus coloring the traces by season (**done**) | `feature/season-filter` | Low | High | None |
-| 3 | Trace coverage over time (year × month) | `feature/coverage-chart` | Medium | High | None (hand-drawn SVG) |
+| 3 | Trace coverage over time (year × month), plus a resizable panel (**done**) | `feature/coverage-chart` | Medium | High | None (hand-drawn SVG) |
 | 4 | Download the traces as a zipped shapefile | `feature/trace-download` | Medium | High | None (own zip and shapefile writers) |
 | 5 | Download the scene previews as a zip | `feature/image-download` | Medium–high | Medium | None (reuses the zip writer from 4) |
 
@@ -115,6 +115,11 @@ Disable the `r2.dev` URL only after the deployed site has been switched over.
 **Risks:** a few, all manageable.
 - **Colour scale:** a sequential scale on a log or square-root count, since counts per month range from 1 to more than 100. It needs a colour-vision check (plan §8.3).
 - **Phone width:** 39 columns become about 8 px wide in a 22 rem panel. That's readable, and the grid scrolls sideways if needed.
+
+**As built (2026-11-05):**
+- Five shades, doubling per step (1 | 2–3 | 4–7 | 8–15 | 16+), from one blue ramp checked against the panel in light and dark mode. In v1 the median glacier-month has 2 traces, 99% have at most 20 and the maximum is 32.
+- The SVG scales with the panel instead of scrolling. The selected trace's month is outlined. The hover uses the SVG `<title>` tooltip (no touch or keyboard access yet; M5).
+- **Resizable panel:** a divider with a grip between the map and the panel; drag it, or focus it and press ← →. The panel stays at least 288 px and the map at least 320 px. The width is remembered in the browser (`localStorage`); the divider is hidden at phone width.
 
 ---
 

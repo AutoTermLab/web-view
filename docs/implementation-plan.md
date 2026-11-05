@@ -431,7 +431,7 @@ Each milestone is built on its own branch and merged after review. Update the St
 | M2 | Full build + upload | `feature/upload` | All 295 glaciers built, invariants pass, `v1/` uploaded, `manifest.json` checked from the public URL | **Done** (`v1` uploaded 2026-10-22 from commit `958c5dc`; all 1,173 files verified against the manifest, §7) |
 | — | Imagery for published traces (one-off, `docs/imagery-procedure.md`) | `feature/previews` (others archived) | A scene and a linked preview for every published trace the data allows; uploaded and checked | **Done** (218,464 of 218,469 traces; uploaded 2026-11-04, full `rclone check` clean) |
 | M3 | App skeleton + overview | `feature/app-overview` | Deployed to Pages, loads `glaciers.json` from R2, map + table + filters work | **In progress** (map and table done on `feature/overview-map`; filters and the Pages deploy to come) |
-| M4 | Glacier detail | `feature/glacier-detail` | Trace map, sensor/season/year filters, time series, inspector, downloads | **In progress** (trace map, scene stepping, sensor and season filters, coloring by season done; coverage chart and downloads in `docs/update-plan.md`) |
+| M4 | Glacier detail | `feature/glacier-detail` | Trace map, sensor/season/year filters, time series, inspector, downloads | **In progress** (trace map, scene stepping, sensor and season filters, coloring by season, coverage chart, resizable panel done; downloads in `docs/update-plan.md`) |
 | M5 | Polish | `feature/polish` | URL state, error states, mobile layout, accessibility pass, README (data citation + how to rebuild) | — |
 | Later | Rejected images · full-record length-change trend · Greenland-wide PMTiles · ice-mask COGs · custom domain | — | — | — |
 
