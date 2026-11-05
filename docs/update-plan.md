@@ -8,9 +8,9 @@ Five features. Each gets its own branch, is reviewed, and is merged into `main` 
 
 | # | Feature | Branch | Complexity | Confidence | New dependency |
 |---|---|---|---|---|---|
-| 0 | Serve the data from the custom domain instead of `r2.dev` | `feature/custom-domain` | Low | High | None |
+| 0 | Serve the data from the custom domain instead of `r2.dev` (**done**) | `feature/custom-domain` | Low | High | None |
 | 1 | Overview map as the index page; table kept at `#/list` (**done**) | `feature/overview-map` | Low–medium | High | None |
-| 2 | Season filter in the glacier view | `feature/season-filter` | Low | High | None |
+| 2 | Season filter in the glacier view, plus coloring the traces by season (**done**) | `feature/season-filter` | Low | High | None |
 | 3 | Trace coverage over time (year × month) | `feature/coverage-chart` | Medium | High | None (hand-drawn SVG) |
 | 4 | Download the traces as a zipped shapefile | `feature/trace-download` | Medium | High | None (own zip and shapefile writers) |
 | 5 | Download the scene previews as a zip | `feature/image-download` | Medium–high | Medium | None (reuses the zip writer from 4) |
@@ -87,6 +87,8 @@ Disable the `r2.dev` URL only after the deployed site has been switched over.
 **Tests:**
 - Vitest: `visibleTraces` with seasons; the URL round-trip.
 - Browser: GID85 with `season=DJF`, checking the count and that the console is clean.
+
+**Added during the build (2026-11-05):** a switch between the Sensors and Seasons boxes colors the other traces by season instead of by sensor (`?color=season`). The seasons have their own palette, sharing no color with the sensors (`app/src/colors.ts`), and the swatches beside whichever boxes match the current coloring act as the legend.
 
 **Decided:** the four meteorological seasons only. A custom month range (for example a May–September melt season, plan §11 Q2) may come later; it is a filter on the month of `date`, so this design leaves room for it.
 
