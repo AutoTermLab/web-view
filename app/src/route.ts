@@ -1,6 +1,7 @@
-// Hash routes: #/ (overview map), #/list (glacier table) and #/glacier/GID278?trace=…&scene=… (shareable, and safe from Pages 404s).
+// Hash routes: #/ (overview map), #/list (glacier table) and #/glacier/GID278?trace=…&scene=…&season=JJA (shareable, and safe
+// from Pages 404s).
 
-export type Route = { view: "overview" } | { view: "list" } | { view: "glacier"; id: string; trace?: string; scene?: string };
+export type Route = { view: "overview" } | { view: "list" } | { view: "glacier"; id: string; trace?: string; scene?: string; seasons?: string[] };
 
 export function parseRoute(hash: string): Route {
   const [path, query = ""] = hash.replace(/^#/, "").split("?");
@@ -13,6 +14,8 @@ export function parseRoute(hash: string): Route {
     const value = params.get(key);
     if (value) route[key] = value;
   }
+  const seasons = params.getAll("season");
+  if (seasons.length) route.seasons = seasons;
   return route;
 }
 
@@ -22,6 +25,7 @@ export function formatRoute(route: Route): string {
   const params = new URLSearchParams();
   if (route.trace) params.set("trace", route.trace);
   if (route.scene) params.set("scene", route.scene);
+  for (const season of route.seasons ?? []) params.append("season", season);
   const query = params.toString();
   return `#/glacier/${route.id}${query ? `?${query}` : ""}`;
 }

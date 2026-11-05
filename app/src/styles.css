@@ -59,6 +59,9 @@ button:disabled { opacity: 0.4; cursor: default; }
 .panel fieldset { border: 1px solid var(--line); border-radius: 6px; margin: 0.5rem 0 0.75rem; padding: 0.4rem 0.6rem; }
 .panel legend { color: var(--muted); padding: 0 0.25rem; }
 .sensor { display: flex; align-items: center; gap: 0.4rem; padding: 0.1rem 0; }
+.seasons { display: flex; flex-wrap: wrap; gap: 0.2rem 0.9rem; }
+.season { display: flex; align-items: center; gap: 0.3rem; padding: 0.1rem 0; }
+.panel fieldset .hint { margin: 0.35rem 0 0.1rem; }
 .swatch { display: inline-block; width: 0.9rem; height: 0.25rem; border-radius: 2px; }
 .stepper { display: flex; align-items: center; gap: 0.5rem; }
 .stepper input[type="range"] { flex: 1; min-width: 0; }
