@@ -1,4 +1,5 @@
-// #/glacier/GID278?trace=…&scene=…&season=JJA : the glacier's traces over the scene the selected trace was drawn on (plan §8.2).
+// #/glacier/GID278?trace=…&scene=…&season=JJA&color=season : the glacier's traces over the scene the selected trace was
+// drawn on (plan §8.2).
 import { Map as MapLibre, NavigationControl, ScaleControl, type ImageSource, type StyleSpecification } from "maplibre-gl";
 import { SEASON_COLORS, SENSOR_COLORS, traceColor } from "../colors";
 import { DATA_BASE_URL, imageUrl, loadGlacier, loadGlaciers, type Glacier, type Traces } from "../data";
@@ -18,7 +19,7 @@ const SEASON_MONTHS: Record<string, string> = {
 };
 const SELECTED_COLOR = "#ff3b30";
 
-type GlacierRoute = { id: string; trace?: string; scene?: string; seasons?: string[] };
+type GlacierRoute = { id: string; trace?: string; scene?: string; seasons?: string[]; color?: "season" };
 
 export function renderGlacier(root: HTMLElement, route: GlacierRoute): () => void {
   root.className = "glacier";
@@ -109,12 +110,13 @@ function mount(map: MapLibre, panel: HTMLElement, route: GlacierRoute, glacier: 
   const others = el("input", { type: "checkbox", checked: false });
   others.onchange = () => map.setLayoutProperty("traces", "visibility", others.checked ? "visible" : "none");
   // The swatches beside the sensor or the season boxes are the legend; CSS shows the set that matches.
-  const bySeason = el("input", { type: "checkbox", role: "switch", checked: false });
+  const bySeason = el("input", { type: "checkbox", role: "switch", checked: route.color === "season" });
   bySeason.onchange = () => {
     panel.dataset.colorBy = bySeason.checked ? "season" : "sensor";
     map.setPaintProperty("traces", "line-color", traceColor(bySeason.checked ? "season" : "sensor") as never);
+    update();
   };
-  panel.dataset.colorBy = "sensor";
+  panel.dataset.colorBy = bySeason.checked ? "season" : "sensor";
 
   panel.replaceChildren(
     el("a", { href: formatRoute({ view: "overview" }) }, "← All glaciers"),
@@ -170,7 +172,8 @@ function mount(map: MapLibre, panel: HTMLElement, route: GlacierRoute, glacier: 
     const scene = scenes.find((s) => s.id === sceneId) ?? scenes[0];
     sceneId = scene?.id;
     history.replaceState(null, "", formatRoute({ view: "glacier", id: glacier.id, trace: selected, scene: sceneId,
-      seasons: seasons.size < SEASONS.length ? SEASONS.filter((s) => seasons.has(s)) : undefined }));
+      seasons: seasons.size < SEASONS.length ? SEASONS.filter((s) => seasons.has(s)) : undefined,
+      color: bySeason.checked ? "season" : undefined }));
 
     const i = list.findIndex((t) => t.trace_id === selected);
     slider.max = String(Math.max(list.length - 1, 0));

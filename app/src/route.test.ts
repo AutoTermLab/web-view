@@ -25,12 +25,17 @@ describe("parseRoute", () => {
       view: "glacier", id: "GID85", trace: "t", seasons: ["MAM", "JJA"],
     });
   });
+
+  it("reads the trace coloring", () => {
+    expect(parseRoute("#/glacier/GID85?color=season")).toEqual({ view: "glacier", id: "GID85", color: "season" });
+    expect(parseRoute("#/glacier/GID85?color=nonsense")).toEqual({ view: "glacier", id: "GID85" });
+  });
 });
 
 describe("formatRoute", () => {
   it("round-trips", () => {
     for (const hash of ["#/", "#/list", "#/glacier/GID1", "#/glacier/GID278?trace=GID278_19850610_L5&scene=LT05_008011_19850610",
-                        "#/glacier/GID85?trace=t&scene=s&season=DJF&season=JJA"]) {
+                        "#/glacier/GID85?trace=t&scene=s&season=DJF&season=JJA&color=season"]) {
       expect(formatRoute(parseRoute(hash))).toBe(hash);
     }
   });
