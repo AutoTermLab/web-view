@@ -5,6 +5,8 @@
   --line: #d9dde3;
   --accent: #0b62c4;
   --panel: #f6f7f9;
+  /* traces per month: none, then 1 | 2–3 | 4–7 | 8–15 | 16+ (one blue ramp, checked against the panel) */
+  --cov0: #dfe2e7; --cov1: #6da7ec; --cov2: #3987e5; --cov3: #256abf; --cov4: #184f95; --cov5: #0d366b;
   color-scheme: light dark;
 }
 @media (prefers-color-scheme: dark) {
@@ -15,6 +17,7 @@
     --line: #2e343c;
     --accent: #6cb0ff;
     --panel: #1c2026;
+    --cov0: #2a3038; --cov1: #184f95; --cov2: #256abf; --cov3: #3987e5; --cov4: #6da7ec; --cov5: #b7d3f6;
   }
 }
 
@@ -75,6 +78,21 @@ input[role="switch"]::before {
 input[role="switch"]:checked { background: var(--accent); }
 input[role="switch"]:checked::before { transform: translateX(0.9rem); }
 input[role="switch"]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.coverage-box { margin: 0 0 0.75rem; }
+.coverage-box h2 { font-size: 1em; font-weight: 400; color: var(--muted); margin: 0 0 0.25rem; }
+.coverage { display: block; width: 100%; height: auto; }
+.coverage text { fill: var(--muted); font-size: 7px; dominant-baseline: middle; }
+.coverage .month { text-anchor: end; }
+.coverage .year { text-anchor: middle; }
+.coverage .dim { opacity: 0.3; }
+.coverage .pick { cursor: pointer; }
+.coverage .mark { fill: none; stroke: var(--fg); stroke-width: 1.2; pointer-events: none; }
+.c0 { fill: var(--cov0); background: var(--cov0); } .c1 { fill: var(--cov1); background: var(--cov1); }
+.c2 { fill: var(--cov2); background: var(--cov2); } .c3 { fill: var(--cov3); background: var(--cov3); }
+.c4 { fill: var(--cov4); background: var(--cov4); } .c5 { fill: var(--cov5); background: var(--cov5); }
+.legend { color: var(--muted); font-size: 0.8em; margin: 0.3rem 0 0; }
+.legend span { display: inline-block; width: 0.7rem; height: 0.7rem; margin: 0 0.2rem 0 0.4rem; vertical-align: -0.1rem; border-radius: 1px; }
+.legend span:first-child { margin-left: 0; }
 .stepper { display: flex; align-items: center; gap: 0.5rem; }
 .stepper input[type="range"] { flex: 1; min-width: 0; }
 .stepper span { flex: 1; text-align: center; }
