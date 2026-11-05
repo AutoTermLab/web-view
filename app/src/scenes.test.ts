@@ -5,7 +5,7 @@ const scene = (id: string, traces: string[]): Scene => ({
   id, date: "2020-01-01", sensor: "S2", image: `GID1/${id}.avif`, corners: [[0, 1], [1, 1], [1, 0], [0, 0]], traces,
 });
 const trace = (trace_id: string, date: string, sensor: string, season = "DJF"): Trace =>
-  ({ trace_id, date, sensor, season, uncertainty_m: 10 });
+  ({ trace_id, date, sensor, season, uncertainty_m: 10, status: "passed" });
 
 describe("scenesByTrace", () => {
   it("lists every scene a trace was linked to, in id order", () => {

@@ -15,6 +15,7 @@ export interface Trace {
   sensor: string;
   season: string;
   uncertainty_m: number | null;
+  status: string;
 }
 
 export function scenesByTrace(scenes: Scene[]): Map<string, Scene[]> {

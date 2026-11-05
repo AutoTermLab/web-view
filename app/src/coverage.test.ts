@@ -3,7 +3,7 @@ import { countClass, coverage, MONTH_SEASONS } from "./coverage";
 import type { Trace } from "./scenes";
 
 const trace = (trace_id: string, date: string, sensor: string, season: string): Trace =>
-  ({ trace_id, date, sensor, season, uncertainty_m: 10 });
+  ({ trace_id, date, sensor, season, uncertainty_m: 10, status: "passed" });
 
 describe("coverage", () => {
   const traces = [
