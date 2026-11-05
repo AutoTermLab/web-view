@@ -2,12 +2,15 @@
 // drawn on (plan §8.2).
 import { Map as MapLibre, NavigationControl, ScaleControl, type ImageSource, type StyleSpecification } from "maplibre-gl";
 import { SEASON_COLORS, SENSOR_COLORS, traceColor } from "../colors";
+import { coverage } from "../coverage";
 import { DATA_BASE_URL, imageUrl, loadGlacier, loadGlaciers, type Glacier, type Traces } from "../data";
 import { formatRoute } from "../route";
 import { nearest, rankScenes, scenesByTrace, step, visibleTraces, type Scene, type Trace } from "../scenes";
 import { inferZone, warpToMercator } from "../warp";
 import { loadBasemap } from "./basemap";
 import { el, showError } from "./common";
+import { coverageChart } from "./coverage";
+import { panelResizer } from "./resizer";
 
 const SENSORS = ["L5", "L7", "L8", "S1", "S2"];
 const SENSOR_NAMES: Record<string, string> = {
@@ -35,7 +38,7 @@ export function renderGlacier(root: HTMLElement, route: GlacierRoute): () => voi
     if (!glacier) return void await data; // rejects with "No glacier …"
     const mapBox = el("div", { className: "map" });
     const panel = el("aside", { className: "panel" }, el("p", { className: "message" }, `Loading ${route.id}…`));
-    root.replaceChildren(mapBox, panel);
+    root.replaceChildren(mapBox, panelResizer(root), panel);
     const map = createMap(mapBox, glacier, style);
     cleanup = () => map.remove();
     const { traces, scenes } = await data;
@@ -98,6 +101,8 @@ function mount(map: MapLibre, panel: HTMLElement, route: GlacierRoute, glacier: 
     return el("label", { className: "season", title: SEASON_MONTHS[s] }, box, swatch(SEASON_COLORS[s]),
       `${s} (${count.toLocaleString()})`);
   });
+  const chart = coverageChart(SENSOR_NAMES, (month) => select(list.find((t) => t.date.startsWith(month))?.trace_id));
+  chart.draw(coverage(traces, sensors), seasons);
   const slider = el("input", { type: "range", min: "0", step: "1", ariaLabel: "Trace, by date" });
   slider.oninput = () => select(list[+slider.value]?.trace_id);
   const prev = el("button", { title: "Previous trace (←)", onclick: () => move(-1) }, "‹");
@@ -126,6 +131,9 @@ function mount(map: MapLibre, panel: HTMLElement, route: GlacierRoute, glacier: 
     el("fieldset", {}, el("legend", {}, "Seasons"), el("div", { className: "seasons" }, ...seasonBoxes),
       el("p", { className: "hint" }, "Winter (DJF) traces are nearly all from 2015 on, and mostly Sentinel-1 radar: optical " +
         "sensors see nothing in the polar night. Comparing seasons mostly compares recent years.")),
+    el("section", { className: "coverage-box" }, el("h2", {}, "Traces per month"), chart.element,
+      el("p", { className: "legend" }, ...["none", "1", "2–3", "4–7", "8–15", "16+"].flatMap((label, i) =>
+        [el("span", { className: `c${i}` }), `${label} `]))),
     el("div", { className: "stepper" }, prev, slider, next), position,
     traceInfo, sceneInfo,
     el("label", { className: "row" }, "Image opacity", opacity),
@@ -159,6 +167,7 @@ function mount(map: MapLibre, panel: HTMLElement, route: GlacierRoute, glacier: 
   /** Apply the sensor and season choices; keep the selected trace if it is still shown, else the nearest by date. */
   function refilter() {
     list = visibleTraces(traces, sensors, seasons);
+    chart.draw(coverage(traces, sensors), seasons);
     if (!list.some((t) => t.trace_id === selected)) select(nearest(list, byId.get(selected!)?.date ?? ""));
     else update();
   }
@@ -175,6 +184,7 @@ function mount(map: MapLibre, panel: HTMLElement, route: GlacierRoute, glacier: 
       seasons: seasons.size < SEASONS.length ? SEASONS.filter((s) => seasons.has(s)) : undefined,
       color: bySeason.checked ? "season" : undefined }));
 
+    chart.select(trace?.date.slice(0, 7));
     const i = list.findIndex((t) => t.trace_id === selected);
     slider.max = String(Math.max(list.length - 1, 0));
     slider.value = String(Math.max(i, 0));
