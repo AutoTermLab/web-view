@@ -214,7 +214,7 @@ function mount(map: MapLibre, panel: HTMLElement, route: GlacierRoute, version: 
     slider.value = String(Math.max(i, 0));
     prev.disabled = i <= 0;
     next.disabled = i < 0 || i >= list.length - 1;
-    download.textContent = `Download ${list.length.toLocaleString()} trace${list.length === 1 ? "" : "s"} (shapefile)`;
+    download.textContent = `${list.length.toLocaleString()} trace${list.length === 1 ? "" : "s"} (shapefile)`;
     download.disabled = !list.length;
     position.textContent = list.length ? `Trace ${i + 1} of ${list.length.toLocaleString()}` : "No traces for these sensors and seasons";
 
